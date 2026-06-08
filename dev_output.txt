@@ -1,0 +1,15 @@
+
+> saas-btp-mali@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.2.0.2:3000
+- Environments: .env.local
+✓ Ready in 9.5s
+⚠ Slow filesystem detected. The benchmark took 468ms. If C:\Users\User\Downloads\claude code\saas-btp-mali\.next/dev is a network drive, consider moving it to a local folder.
+See more: https://nextjs.org/docs/app/guides/local-development
+○ Compiling middleware ...
+
+ GET / 307 in 2.8s (next.js: 2.6s, application-code: 191ms)
+ GET /login 200 in 1704ms (next.js: 1582ms, application-code: 123ms)
