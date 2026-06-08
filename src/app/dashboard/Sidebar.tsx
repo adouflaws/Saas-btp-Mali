@@ -91,7 +91,12 @@ const navItems = [
   },
 ]
 
-export default function Sidebar() {
+type SidebarProps = {
+  isOpen: boolean
+  onClose: () => void
+}
+
+export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -103,9 +108,22 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-[260px] shrink-0 bg-[#171717] border-r border-white/[0.06] flex flex-col h-full">
-      {/* Logo */}
-      <div className="px-5 py-5 border-b border-white/[0.06]">
+    <aside
+      className={[
+        // Base — toujours fixé sur mobile, relatif sur desktop
+        'fixed inset-y-0 left-0 z-50',
+        'w-[260px] shrink-0 bg-[#171717] border-r border-white/[0.06]',
+        'flex flex-col h-full',
+        // Animation slide mobile
+        'transform transition-transform duration-300 ease-in-out',
+        // Desktop : toujours visible dans le flux
+        'md:relative md:translate-x-0',
+        // Mobile : masqué sauf si ouvert
+        isOpen ? 'translate-x-0' : '-translate-x-full',
+      ].join(' ')}
+    >
+      {/* Logo + bouton fermer (mobile) */}
+      <div className="px-5 py-5 border-b border-white/[0.06] flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20 shrink-0">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
@@ -123,6 +141,17 @@ export default function Sidebar() {
             <p className="text-gray-600 text-[11px] mt-0.5">Gestion de chantiers</p>
           </div>
         </div>
+
+        {/* Bouton fermer — mobile seulement */}
+        <button
+          onClick={onClose}
+          className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors"
+          aria-label="Fermer le menu"
+        >
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+            <path d="M2 2l12 12M14 2L2 14" strokeLinecap="round" />
+          </svg>
+        </button>
       </div>
 
       {/* Navigation */}
@@ -140,6 +169,7 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onClose}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13.5px] font-medium transition-all group ${
                 isActive
                   ? 'bg-orange-500/10 text-orange-400'

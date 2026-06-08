@@ -237,16 +237,16 @@ export default function ChantiersPage() {
   const termines = chantiers.filter(c => c.statut === 'termine').length
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 md:p-8">
       {/* En-tête */}
-      <div className="mb-8 flex items-start justify-between">
+      <div className="mb-6 md:mb-8 flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-white">Chantiers</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-white">Chantiers</h1>
           <p className="text-gray-500 text-sm mt-1">Gestion et suivi de vos chantiers actifs</p>
         </div>
         <button
           onClick={openNew}
-          className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors"
+          className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors min-h-[44px] shrink-0"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
@@ -266,17 +266,17 @@ export default function ChantiersPage() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-3 gap-3 mb-6 md:mb-8">
         {[
           { label: 'En cours', value: actifs, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
           { label: 'En pause', value: enPause, color: 'text-amber-400', bg: 'bg-amber-500/10' },
           { label: 'Terminés', value: termines, color: 'text-gray-400', bg: 'bg-gray-500/10' },
         ].map(s => (
-          <div key={s.label} className="bg-[#232323] rounded-2xl border border-white/[0.06] p-5 flex items-center gap-4">
-            <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center`}>
-              <span className={`text-lg font-bold ${s.color}`}>{s.value}</span>
+          <div key={s.label} className="bg-[#232323] rounded-2xl border border-white/[0.06] p-3 sm:p-5 flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
+            <div className={`w-9 h-9 sm:w-10 sm:h-10 ${s.bg} rounded-xl flex items-center justify-center shrink-0`}>
+              <span className={`text-base sm:text-lg font-bold ${s.color}`}>{s.value}</span>
             </div>
-            <p className="text-gray-400 text-[13px]">{s.label}</p>
+            <p className="text-gray-400 text-[11px] sm:text-[13px] text-center sm:text-left">{s.label}</p>
           </div>
         ))}
       </div>
@@ -336,7 +336,7 @@ export default function ChantiersPage() {
                     </div>
 
                     {/* Droite */}
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right hidden sm:block">
                         <p className="text-gray-300 text-[13px] font-medium">{formatBudget(c.budget_prevu)}</p>
                         {c.date_fin_prevue && (
@@ -345,23 +345,24 @@ export default function ChantiersPage() {
                           </p>
                         )}
                       </div>
-                      <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full ${statut.badge}`}>
+                      <span className={`text-[10px] sm:text-[11px] font-medium px-2 sm:px-2.5 py-1 rounded-full whitespace-nowrap ${statut.badge}`}>
                         {statut.label}
                       </span>
                       {/* Actions */}
                       <Link
                         href={`/dashboard/chantiers/${c.id}`}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 transition-colors text-[12px] font-medium"
+                        className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 transition-colors text-[11px] sm:text-[12px] font-medium"
                         title="Détail & Partage"
                       >
-                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5 shrink-0">
                           <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/>
                         </svg>
                         Détail
                       </Link>
+                      {/* Planning — masqué sur mobile */}
                       <Link
                         href={`/dashboard/chantiers/${c.id}/planning`}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-orange-500/10 text-gray-400 hover:text-orange-400 transition-colors text-[12px] font-medium"
+                        className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-orange-500/10 text-gray-400 hover:text-orange-400 transition-colors text-[12px] font-medium"
                         title="Voir le planning"
                       >
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
