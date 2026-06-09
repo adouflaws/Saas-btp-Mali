@@ -89,6 +89,18 @@ const navItems = [
       </svg>
     ),
   },
+  {
+    href: '/dashboard/carburant',
+    label: 'Carburant',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5">
+        <path d="M3 22V6a2 2 0 012-2h8a2 2 0 012 2v16" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M3 22h12" strokeLinecap="round"/>
+        <path d="M3 11h12" strokeLinecap="round"/>
+        <path d="M15 7h2a2 2 0 012 2v2.5a1.5 1.5 0 003 0V7l-3-3" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
 ]
 
 type SidebarProps = {
