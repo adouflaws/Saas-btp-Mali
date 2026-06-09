@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { cacheSet, cacheGet, queueAdd } from '@/lib/offline'
 
 const supabase = createClient()
 
@@ -45,24 +46,48 @@ export default function PointagePage() {
   const [saved, setSaved] = useState(false)
   const [pageError, setPageError] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  )
+  const [offlineMsg, setOfflineMsg] = useState('')
 
   const fetchChantiers = useCallback(async (entrepriseId: string) => {
+    if (!navigator.onLine) {
+      return cacheGet<Chantier[]>('chantiers_pointage') ?? []
+    }
     const { data } = await supabase
       .from('chantiers')
       .select('id, nom, ville')
       .eq('entreprise_id', entrepriseId)
       .eq('statut', 'en_cours')
       .order('nom')
+    if (data) cacheSet('chantiers_pointage', data)
     return data ?? []
   }, [])
 
   const fetchOuvriers = useCallback(async () => {
+    if (!navigator.onLine) {
+      return cacheGet<Ouvrier[]>('ouvriers_pointage') ?? []
+    }
     const { data } = await supabase
       .from('ouvriers')
       .select('id, nom, prenom, metier, taux_journalier, actif')
       .eq('actif', true)
       .order('nom')
+    if (data) cacheSet('ouvriers_pointage', data)
     return data ?? []
+  }, [])
+
+  // Détection réseau
+  useEffect(() => {
+    const onOnline  = () => setIsOnline(true)
+    const onOffline = () => setIsOnline(false)
+    window.addEventListener('online',  onOnline)
+    window.addEventListener('offline', onOffline)
+    return () => {
+      window.removeEventListener('online',  onOnline)
+      window.removeEventListener('offline', onOffline)
+    }
   }, [])
 
   useEffect(() => {
@@ -157,6 +182,21 @@ export default function PointagePage() {
       else toInsert.push(payload)
     })
 
+    /* ── Mode hors ligne : mettre en queue ── */
+    if (!isOnline) {
+      toInsert.forEach(data =>
+        queueAdd({ table: 'pointages', op: 'insert', data: data as Record<string, unknown> })
+      )
+      toUpdate.forEach(({ id, data }) =>
+        queueAdd({ table: 'pointages', op: 'update', data: data as Record<string, unknown>, rowId: id })
+      )
+      setSaving(false); setSaved(true)
+      setOfflineMsg('📥 Pointage sauvegardé localement — sera synchronisé au retour du réseau')
+      setTimeout(() => { setSaved(false); setOfflineMsg('') }, 4500)
+      return
+    }
+
+    /* ── Mode en ligne : envoi Supabase ── */
     const ops: Promise<{ error: { message: string } | null }>[] = []
     if (toInsert.length > 0) ops.push(supabase.from('pointages').insert(toInsert) as unknown as Promise<{ error: { message: string } | null }>)
     toUpdate.forEach(u => ops.push(supabase.from('pointages').update(u.data).eq('id', u.id) as unknown as Promise<{ error: { message: string } | null }>))
@@ -174,7 +214,24 @@ export default function PointagePage() {
   const totalJour = Object.values(lignes).reduce((acc, l) => acc + (l.montant_jour ?? 0), 0)
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 md:p-8">
+
+      {/* Toast hors ligne */}
+      {offlineMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[90vw] sm:w-auto flex items-start gap-2.5 bg-amber-600 text-white text-[13px] font-semibold px-5 py-3 rounded-xl shadow-xl">
+          <span className="shrink-0 text-base mt-0.5">📶</span>
+          <span>{offlineMsg}</span>
+        </div>
+      )}
+
+      {/* Bandeau hors ligne */}
+      {!isOnline && (
+        <div className="mb-4 flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl px-4 py-2.5 text-[13px]">
+          <span>📡</span>
+          <span>Mode hors ligne — le pointage sera sauvegardé localement</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>

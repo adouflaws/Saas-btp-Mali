@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { cacheSet, cacheGet } from '@/lib/offline'
 
 const supabase = createClient()
 
@@ -113,13 +114,25 @@ export default function ChantiersPage() {
   const [deleting, setDeleting] = useState(false)
 
   const fetchChantiers = useCallback(async (eid: string) => {
+    // Offline : charger depuis le cache localStorage
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const cached = cacheGet<Chantier[]>('chantiers')
+      if (cached) setChantiers(cached)
+      else setPageError('Hors ligne — aucune donnée en cache disponible.')
+      return
+    }
+
     const { data, error } = await supabase
       .from('chantiers')
       .select('*')
       .eq('entreprise_id', eid)
       .order('created_at', { ascending: false })
     if (error) setPageError(error.message)
-    else setChantiers(data ?? [])
+    else {
+      setChantiers(data ?? [])
+      // Sauvegarder en cache pour usage offline
+      if (data) cacheSet('chantiers', data)
+    }
   }, [])
 
   useEffect(() => {

@@ -83,6 +83,8 @@ export default function CarburantPage() {
   const [savingVehicule, setSavingVehicule]     = useState(false)
   const [vehiculeErr, setVehiculeErr]           = useState('')
 
+  const [toast, setToast] = useState('')
+
   /* ── Fetch ── */
 
   const fetchAll = useCallback(async (eid: string) => {
@@ -169,24 +171,54 @@ export default function CarburantPage() {
 
   async function savePlein(e: React.FormEvent) {
     e.preventDefault()
-    if (!entrepriseId || !userId) return
     setSavingPlein(true); setPleinErr('')
+
+    // Re-fetch user + entreprise_id fraîchement (évite bug si state null)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setPleinErr('Session expirée, veuillez vous reconnecter.'); setSavingPlein(false); return }
+
+    const { data: profile, error: profileErr } = await supabase
+      .from('profiles').select('entreprise_id').eq('id', user.id).single()
+
+    if (profileErr || !profile?.entreprise_id) {
+      const msg = profileErr?.message ?? 'Entreprise introuvable'
+      console.error('Erreur profil:', profileErr)
+      setPleinErr(msg); setSavingPlein(false); return
+    }
+
+    console.log('=== INSERTION PLEIN ===')
+    console.log('entreprise_id:', profile.entreprise_id)
+    console.log('vehicule_id:', pleinForm.vehicule_id)
+    console.log('litres:', pleinForm.litres, '| montant:', pleinForm.montant)
+
     const { error } = await supabase.from('pleins_carburant').insert({
-      vehicule_id:  pleinForm.vehicule_id,
-      chantier_id:  pleinForm.chantier_id || null,
-      entreprise_id: entrepriseId,
-      date_plein:   pleinForm.date_plein,
-      litres:       Number(pleinForm.litres),
-      montant:      Number(pleinForm.montant),
-      kilometrage:  pleinForm.kilometrage ? Number(pleinForm.kilometrage) : null,
-      station:      pleinForm.station.trim() || null,
-      saisi_par:    userId,
+      vehicule_id:   pleinForm.vehicule_id,
+      chantier_id:   pleinForm.chantier_id || null,
+      entreprise_id: profile.entreprise_id,
+      date_plein:    pleinForm.date_plein,
+      litres:        Number(pleinForm.litres),
+      montant:       Number(pleinForm.montant),
+      kilometrage:   pleinForm.kilometrage ? Number(pleinForm.kilometrage) : null,
+      station:       pleinForm.station.trim() || null,
+      saisi_par:     user.id,
     })
-    if (error) { setPleinErr(error.message); setSavingPlein(false); return }
+
+    if (error) {
+      console.error('Erreur plein:', error)
+      setPleinErr(error.message)
+      setSavingPlein(false); return
+    }
+
+    // Succès
     setShowPlein(false)
     setPleinForm({ ...DEFAULT_PLEIN, date_plein: new Date().toISOString().split('T')[0] })
     setSavingPlein(false)
-    await fetchAll(entrepriseId)
+    setToast('Plein enregistré ✅')
+    setTimeout(() => setToast(''), 3500)
+    await fetchAll(profile.entreprise_id)
+    // Mettre à jour aussi entrepriseId si nécessaire
+    setEntrepriseId(profile.entreprise_id)
+    setUserId(user.id)
   }
 
   async function saveVehicule(e: React.FormEvent) {
@@ -474,6 +506,16 @@ export default function CarburantPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Toast succès ── */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 bg-emerald-600 text-white text-[13px] font-semibold px-5 py-3 rounded-xl shadow-xl whitespace-nowrap">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
+            <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd"/>
+          </svg>
+          {toast}
         </div>
       )}
 
