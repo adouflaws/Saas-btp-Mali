@@ -132,7 +132,7 @@ export default function JalonsPage({ params }: { params: Promise<{ id: string }>
   const depasses = jalons.filter(j => getJalonStatus(j) === 'depasse').length
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 md:p-8">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-[12px] text-gray-600 mb-6">
         <Link href="/dashboard/chantiers" className="hover:text-gray-400 transition-colors">Chantiers</Link>
@@ -143,13 +143,13 @@ export default function JalonsPage({ params }: { params: Promise<{ id: string }>
       </div>
 
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">{chantier?.nom ?? '...'}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">{chantier?.nom ?? '...'}</h1>
           <p className="text-gray-500 text-sm mt-1">Jalons & étapes clés du chantier</p>
         </div>
         <button onClick={() => { setForm(DEFAULT_FORM); setFormError(''); setShowModal(true) }}
-          className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors shrink-0">
+          className="flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors w-full sm:w-auto">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
           </svg>
@@ -158,14 +158,16 @@ export default function JalonsPage({ params }: { params: Promise<{ id: string }>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-[#1a1a1a] rounded-xl p-1 mb-6 w-fit">
-        <Link href={`/dashboard/chantiers/${chantierId}/planning`}
-          className="px-4 py-2 rounded-lg text-gray-500 hover:text-gray-200 text-[13px] font-medium transition-colors">
-          Tâches
-        </Link>
-        <span className="px-4 py-2 rounded-lg bg-orange-500/10 text-orange-400 text-[13px] font-medium">
-          Jalons
-        </span>
+      <div className="overflow-x-auto mb-6">
+        <div className="flex gap-1 bg-[#1a1a1a] rounded-xl p-1 w-fit">
+          <Link href={`/dashboard/chantiers/${chantierId}/planning`}
+            className="px-4 py-2 rounded-lg text-gray-500 hover:text-gray-200 text-[13px] font-medium transition-colors">
+            Tâches
+          </Link>
+          <span className="px-4 py-2 rounded-lg bg-orange-500/10 text-orange-400 text-[13px] font-medium">
+            Jalons
+          </span>
+        </div>
       </div>
 
       {/* Erreur */}
@@ -179,7 +181,7 @@ export default function JalonsPage({ params }: { params: Promise<{ id: string }>
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
         {[
           { label: 'Total jalons', value: jalons.length, color: 'text-white', bg: 'bg-white/[0.05]' },
           { label: 'Atteints', value: atteints, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
@@ -266,7 +268,7 @@ export default function JalonsPage({ params }: { params: Promise<{ id: string }>
                           <p className={`text-[14px] font-medium ${j.atteint ? 'text-gray-500 line-through' : 'text-white'}`}>
                             {j.nom}
                           </p>
-                          <div className="flex items-center gap-3 mt-1">
+                          <div className="flex items-center gap-3 mt-1 flex-wrap">
                             <span className="text-gray-600 text-[12px]">
                               Prévu le {datePrevue.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                             </span>
@@ -306,10 +308,11 @@ export default function JalonsPage({ params }: { params: Promise<{ id: string }>
 
       {/* Modal création jalon */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-md bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl">
+          <div className="relative w-full max-w-md bg-[#232323] rounded-t-3xl sm:rounded-2xl border border-white/[0.08] shadow-2xl">
+            <div className="sm:hidden flex justify-center pt-3 pb-1"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06]">
               <h2 className="text-[15px] font-semibold text-white">Nouveau jalon</h2>
               <button onClick={() => setShowModal(false)}
@@ -333,7 +336,7 @@ export default function JalonsPage({ params }: { params: Promise<{ id: string }>
                 </label>
                 <input type="text" value={form.nom} onChange={e => setField('nom', e.target.value)} required
                   placeholder="Ex: Livraison fondations"
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
+                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all" />
               </div>
 
               <div>
@@ -341,7 +344,7 @@ export default function JalonsPage({ params }: { params: Promise<{ id: string }>
                   Date prévue <span className="text-orange-400">*</span>
                 </label>
                 <input type="date" value={form.date_prevue} onChange={e => setField('date_prevue', e.target.value)} required
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
+                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all" />
               </div>
 
               <div>
@@ -350,7 +353,7 @@ export default function JalonsPage({ params }: { params: Promise<{ id: string }>
                 </label>
                 <input type="number" min="1" max="90" value={form.alerte_jours}
                   onChange={e => setField('alerte_jours', e.target.value)}
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
+                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all" />
                 <p className="text-gray-700 text-[11px] mt-1">Le badge &quot;Proche&quot; s&apos;affiche {form.alerte_jours} jour{Number(form.alerte_jours) > 1 ? 's' : ''} avant</p>
               </div>
 

@@ -1,8 +1,14 @@
-'use client'
+﻿'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import Link from 'next/link'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import PageSkeleton from '@/components/PageSkeleton'
+import { useActionGuard } from '@/hooks/useActionGuard'
+import StatusBadge, { statutBarClass } from '@/components/StatusBadge'
+import { STATUTS_FACTURE } from '@/constants/statuts'
+import { generateDocument, type PdfEntreprise } from '@/lib/pdf/generateDocument'
 
 const supabase = createClient()
 
@@ -26,13 +32,6 @@ type Facture = {
   chantiers: { nom: string; client_nom: string; client_telephone: string | null; client_email: string | null; ville: string | null } | null
 }
 
-const STATUTS_FACTURE = [
-  { value: 'en_attente',         label: 'En attente',   badge: 'bg-amber-500/10 text-amber-400' },
-  { value: 'partiellement_paye', label: 'Part. payée',  badge: 'bg-blue-500/10 text-blue-400' },
-  { value: 'paye',               label: 'Payée',        badge: 'bg-emerald-500/10 text-emerald-400' },
-  { value: 'en_retard',          label: 'En retard',    badge: 'bg-red-500/10 text-red-400' },
-]
-
 const MODES_PAIEMENT = [
   { value: 'wave',         label: 'Wave',         icon: '📱' },
   { value: 'orange_money', label: 'Orange Money', icon: '🟠' },
@@ -41,17 +40,43 @@ const MODES_PAIEMENT = [
   { value: 'cheque',       label: 'Chèque',       icon: '📄' },
 ]
 
-function getStatutFac(v: string | null) { return STATUTS_FACTURE.find(s => s.value === v) ?? STATUTS_FACTURE[0] }
 function fcfa(v: number | null) { return (v ?? 0).toLocaleString('fr-FR') + ' FCFA' }
 
 function getClientNom(f: Facture) {
   return f.client_nom || f.chantiers?.client_nom || null
 }
 
+type FiltreFacture = 'toutes' | 'impayees' | 'payees'
+const FILTRES_FACTURE: { value: FiltreFacture; label: string }[] = [
+  { value: 'toutes', label: 'Toutes' },
+  { value: 'impayees', label: 'Impayées' },
+  { value: 'payees', label: 'Payées' },
+]
+function parseFiltreFacture(v: string | null): FiltreFacture {
+  return v === 'impayees' || v === 'payees' ? v : 'toutes'
+}
+
 export default function FacturesPage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <FacturesPageInner />
+    </Suspense>
+  )
+}
+
+function FacturesPageInner() {
+  const { guard } = useActionGuard()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const [filtre, setFiltre] = useState<FiltreFacture>(() => parseFiltreFacture(searchParams.get('filtre')))
   const [factures, setFactures] = useState<Facture[]>([])
   const [loading, setLoading] = useState(true)
   const [pageError, setPageError] = useState('')
+
+  function changerFiltre(v: FiltreFacture) {
+    setFiltre(v)
+    router.push(v === 'toutes' ? '/dashboard/factures' : `/dashboard/factures?filtre=${v}`, { scroll: false })
+  }
 
   // Modal paiement
   const [paiementTarget, setPaiementTarget] = useState<Facture | null>(null)
@@ -71,12 +96,13 @@ export default function FacturesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Facture | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  // Modal ajout client
-  const [clientTarget, setClientTarget] = useState<Facture | null>(null)
-  const [clientNomVal, setClientNomVal] = useState('')
-  const [clientTelVal, setClientTelVal] = useState('')
-  const [clientEmailVal, setClientEmailVal] = useState('')
-  const [savingClient, setSavingClient] = useState(false)
+  // Ajout téléphone legacy
+  const [telTarget, setTelTarget] = useState<Facture | null>(null)
+  const [telVal, setTelVal] = useState('')
+  const [savingTel, setSavingTel] = useState(false)
+
+  // Entreprise info pour PDF
+  const [entrepriseInfo, setEntrepriseInfo] = useState<PdfEntreprise>({ nom: 'BTP Mali' })
 
   const fetchFactures = useCallback(async () => {
     const { data, error } = await supabase
@@ -88,7 +114,27 @@ export default function FacturesPage() {
   }, [])
 
   useEffect(() => {
-    async function init() { setLoading(true); await fetchFactures(); setLoading(false) }
+    async function init() {
+      setLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('entreprise_id')
+          .eq('id', user.id)
+          .single()
+        if (profile?.entreprise_id) {
+          const { data: ent } = await supabase
+            .from('entreprises')
+            .select('nom, adresse, telephone, email, rccm, nif')
+            .eq('id', profile.entreprise_id)
+            .single()
+          if (ent) setEntrepriseInfo(ent as PdfEntreprise)
+        }
+      }
+      await fetchFactures()
+      setLoading(false)
+    }
     init()
   }, [fetchFactures])
 
@@ -118,29 +164,49 @@ export default function FacturesPage() {
     })
   }, [editDateEcheance, editTarget])
 
-  function openAddClient(f: Facture) {
-    setClientTarget(f)
-    setClientNomVal(getClientNom(f) ?? '')
-    setClientTelVal(f.client_telephone ?? f.chantiers?.client_telephone ?? '')
-    setClientEmailVal(f.client_email ?? f.chantiers?.client_email ?? '')
+  function openTelModal(f: Facture) {
+    setTelTarget(f)
+    setTelVal(f.client_telephone ?? f.chantiers?.client_telephone ?? '')
   }
 
-  async function handleSaveClient() {
-    if (!clientTarget) return
-    setSavingClient(true)
-    await supabase.from('factures').update({
-      client_nom:       clientNomVal.trim() || null,
-      client_telephone: clientTelVal.trim() || null,
-      client_email:     clientEmailVal.trim() || null,
-    }).eq('id', clientTarget.id)
-    if (clientTarget.chantier_id) {
-      await supabase.from('chantiers').update({
-        client_nom:       clientNomVal.trim() || undefined,
-        client_telephone: clientTelVal.trim() || undefined,
-        client_email:     clientEmailVal.trim() || undefined,
-      }).eq('id', clientTarget.chantier_id)
-    }
-    setSavingClient(false); setClientTarget(null); await fetchFactures()
+  async function handleSaveTel() {
+    if (!telTarget) return
+    setSavingTel(true)
+    await supabase.from('factures').update({ client_telephone: telVal.trim() || null }).eq('id', telTarget.id)
+    setSavingTel(false); setTelTarget(null); await fetchFactures()
+  }
+
+  async function downloadFacturePDF(f: Facture) {
+    const { data: lignesRaw } = await supabase
+      .from('lignes_factures')
+      .select('designation, unite, quantite, prix_unitaire')
+      .eq('facture_id', f.id)
+      .order('id')
+    const lignes = (lignesRaw ?? []).map((l: { designation: string; unite: string | null; quantite: number | null; prix_unitaire: number | null }) => ({
+      designation: l.designation,
+      unite: l.unite,
+      quantite: l.quantite ?? 0,
+      prix_unit: l.prix_unitaire ?? 0,
+      total: Math.round((l.quantite ?? 0) * (l.prix_unitaire ?? 0)),
+    }))
+    const ht = f.montant_ht ?? 0
+    const tva_taux = f.tva_taux ?? 18
+    const tva = Math.round(ht * tva_taux / 100)
+    await generateDocument({
+      type: 'facture',
+      entreprise: entrepriseInfo,
+      numero: f.numero,
+      date_emission: f.date_emission,
+      date_echeance: f.date_echeance,
+      client_nom: getClientNom(f),
+      tva_taux,
+      ht,
+      tva,
+      ttc: f.montant_ttc ?? (ht + tva),
+      montant_paye: f.montant_paye,
+      notes: f.notes,
+      lignes,
+    })
   }
 
   async function handlePaiement() {
@@ -154,6 +220,7 @@ export default function FacturesPage() {
       montant_paye: totalPaye,
       statut: newStatut,
       mode_paiement: modePaiement,
+      ...(newStatut === 'paye' ? { date_paiement: new Date().toISOString() } : {}),
     }).eq('id', paiementTarget.id)
     setPaiementTarget(null); setPayant(false); await fetchFactures()
   }
@@ -186,16 +253,24 @@ export default function FacturesPage() {
   const totalEnAttente = factures.filter(f => f.statut !== 'paye').reduce((a, f) => a + ((f.montant_ttc ?? 0) - (f.montant_paye ?? 0)), 0)
   const enRetardCount = factures.filter(f => isEnRetard(f)).length
 
+  const facturesFiltrees = factures.filter(f => {
+    if (filtre === 'impayees') return f.statut !== 'paye'
+    if (filtre === 'payees') return f.statut === 'paye'
+    return true
+  })
+
+  if (loading) return <PageSkeleton />
+
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 md:p-8">
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Factures</h1>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">Factures</h1>
           <p className="text-gray-500 text-sm mt-1">Suivi des encaissements et paiements</p>
         </div>
         <Link href="/dashboard/devis"
-          className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors shrink-0">
+          className="flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors w-full sm:w-auto">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M12 5v14M5 12h14" strokeLinecap="round"/></svg>
           Nouveau devis
         </Link>
@@ -209,7 +284,7 @@ export default function FacturesPage() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         {[
           { label: 'Encaissé', value: fcfa(totalEncaisse), color: 'text-emerald-400', bg: 'bg-emerald-500/10',
             icon: <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd"/></svg> },
@@ -228,31 +303,46 @@ export default function FacturesPage() {
 
       {/* Liste factures */}
       <div className="bg-[#232323] rounded-2xl border border-white/[0.06] overflow-hidden">
-        <div className="px-6 py-4 border-b border-white/[0.06]">
+        <div className="px-6 py-4 border-b border-white/[0.06] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <h2 className="text-[15px] font-semibold text-white">
             Liste des factures
-            {!loading && <span className="ml-2 text-gray-600 text-[13px] font-normal">({factures.length})</span>}
+            {!loading && <span className="ml-2 text-gray-600 text-[13px] font-normal">({facturesFiltrees.length})</span>}
           </h2>
+          <div className="flex gap-1.5 overflow-x-auto">
+            {FILTRES_FACTURE.map(f => (
+              <button key={f.value} onClick={() => changerFiltre(f.value)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-colors ${
+                  filtre === f.value
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-transparent border border-white/[0.12] text-gray-400 hover:text-white hover:border-white/[0.25]'
+                }`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <svg className="animate-spin w-6 h-6 text-orange-400" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
           </div>
-        ) : factures.length === 0 ? (
+        ) : facturesFiltrees.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="w-12 h-12 bg-orange-500/10 rounded-2xl flex items-center justify-center mb-3">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-6 h-6 text-orange-400"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" strokeLinecap="round"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
             </div>
-            <p className="text-white text-[14px] font-medium mb-1">Aucune facture</p>
-            <p className="text-gray-600 text-[12px]">
-              <Link href="/dashboard/devis" className="text-orange-400 hover:underline">Convertissez un devis accepté</Link> pour créer une facture
+            <p className="text-white text-[14px] font-medium mb-1">
+              {factures.length === 0 ? 'Aucune facture' : 'Aucune facture pour ce filtre'}
             </p>
+            {factures.length === 0 && (
+              <p className="text-gray-600 text-[12px]">
+                <Link href="/dashboard/devis" className="text-orange-400 hover:underline">Convertissez un devis accepté</Link> pour créer une facture
+              </p>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-white/[0.04]">
-            {factures.map(f => {
-              const statut = getStatutFac(f.statut)
+            {facturesFiltrees.map(f => {
               const ttc = f.montant_ttc ?? 0
               const paye = f.montant_paye ?? 0
               const restant = Math.max(0, ttc - paye)
@@ -261,130 +351,116 @@ export default function FacturesPage() {
               const clientNom = getClientNom(f)
 
               return (
-                <div key={f.id} className={`px-6 py-4 hover:bg-white/[0.02] transition-colors group ${retard ? 'border-l-2 border-red-500/40' : ''}`}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div className="w-9 h-9 bg-white/[0.04] rounded-xl flex items-center justify-center shrink-0 mt-0.5">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 text-gray-500"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" strokeLinecap="round"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4" strokeLinecap="round"/></svg>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-white text-[14px] font-semibold">{f.numero}</p>
-                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statut.badge}`}>{statut.label}</span>
-                          {retard && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">En retard</span>}
-                          {f.mode_paiement && (
-                            <span className="text-[10px] text-gray-600">
-                              via {MODES_PAIEMENT.find(m => m.value === f.mode_paiement)?.label ?? f.mode_paiement}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Nom client */}
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {clientNom ? (
-                            <p className="text-gray-400 text-[12px] font-medium">{clientNom}</p>
-                          ) : (
-                            <button
-                              onClick={() => openAddClient(f)}
-                              className="flex items-center gap-1 text-[11px] text-orange-400 hover:text-orange-300 font-medium transition-colors"
-                            >
-                              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3 h-3"><path d="M8 3v10M3 8h10" strokeLinecap="round"/></svg>
-                              Ajouter client
-                            </button>
-                          )}
-                          {f.chantiers?.nom && (
-                            <span className="text-gray-600 text-[12px]">· {f.chantiers.nom}</span>
-                          )}
-                        </div>
-
-                        {/* Contact client */}
-                        {(f.client_telephone || f.chantiers?.client_telephone || f.client_email || f.chantiers?.client_email) && (
-                          <div className="flex items-center gap-3 mt-0.5">
-                            {(f.client_telephone || f.chantiers?.client_telephone) && (
-                              <span className="text-gray-700 text-[11px] flex items-center gap-1">
-                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3"><path d="M9.5 2.5s1.5.5 1.5 2.5-1.5 2.5-1.5 2.5M11 12.5c-5.5 0-7.5-5.5-7.5-5.5s0-1.5 1.5-1.5l1.5 3-1 1c.5 1 2 2 2 2l1-1 3 1.5c0 1.5-1.5 1.5-1.5 0z" strokeLinecap="round"/></svg>
-                                {f.client_telephone || f.chantiers?.client_telephone}
+                <div key={f.id} className={`px-4 sm:px-6 py-4 hover:bg-white/[0.02] transition-colors ${retard ? 'border-l-2 border-red-500/40' : ''}`}>
+                  {/* Ligne info */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 bg-white/[0.04] rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 text-gray-500"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" strokeLinecap="round"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4" strokeLinecap="round"/></svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-white text-[14px] font-semibold whitespace-nowrap">{f.numero}</p>
+                            <StatusBadge type="facture" statut={f.statut} />
+                            {retard && f.statut !== 'en_retard' && (
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 whitespace-nowrap">En retard</span>
+                            )}
+                            {f.mode_paiement && (
+                              <span className="text-[10px] text-gray-600 whitespace-nowrap">
+                                via {MODES_PAIEMENT.find(m => m.value === f.mode_paiement)?.label ?? f.mode_paiement}
                               </span>
                             )}
-                            {(f.client_email || f.chantiers?.client_email) && (
-                              <span className="text-gray-700 text-[11px]">{f.client_email || f.chantiers?.client_email}</span>
+                          </div>
+
+                          {/* Client + chantier */}
+                          <div className="mt-0.5">
+                            {clientNom ? (
+                              <p className="text-gray-400 text-[12px] font-medium truncate">
+                                {clientNom}{f.chantiers?.nom ? ` · ${f.chantiers.nom}` : ''}
+                              </p>
+                            ) : (
+                              <p className="text-gray-600 text-[12px] truncate">
+                                {f.chantiers?.nom ?? '—'}
+                              </p>
+                            )}
+                            {!f.client_telephone && (
+                              <button onClick={() => guard(() => openTelModal(f))}
+                                className="text-[11px] text-orange-400/70 hover:text-orange-400 font-medium transition-colors mt-0.5">
+                                + Ajouter le téléphone
+                              </button>
                             )}
                           </div>
-                        )}
 
-                        {(f.date_emission || f.date_echeance) && (
-                          <p className="text-gray-700 text-[11px] mt-0.5">
-                            {f.date_emission && `Émise le ${new Date(f.date_emission).toLocaleDateString('fr-FR')}`}
-                            {f.date_echeance && ` · Échéance ${new Date(f.date_echeance).toLocaleDateString('fr-FR')}`}
-                          </p>
-                        )}
-                        {f.notes && (
-                          <p className="text-gray-600 text-[11px] mt-1 italic truncate max-w-xs">{f.notes}</p>
-                        )}
+                          {/* Dates */}
+                          {(f.date_emission || f.date_echeance) && (
+                            <p className="text-gray-700 text-[11px] mt-0.5">
+                              {f.date_emission && `Émise le ${new Date(f.date_emission).toLocaleDateString('fr-FR')}`}
+                              {f.date_echeance && ` · Échéance ${new Date(f.date_echeance).toLocaleDateString('fr-FR')}`}
+                            </p>
+                          )}
+                          {f.notes && (
+                            <p className="text-gray-600 text-[11px] mt-1 italic truncate">{f.notes}</p>
+                          )}
 
-                        {/* Barre de paiement */}
-                        {ttc > 0 && (
-                          <div className="mt-2.5 max-w-xs">
-                            <div className="flex justify-between text-[10px] mb-1">
-                              <span className="text-gray-600">Payé : {fcfa(paye)}</span>
-                              <span className="text-gray-700">{pct}%</span>
+                          {/* Barre de paiement */}
+                          {ttc > 0 && (
+                            <div className="mt-2.5">
+                              <div className="flex justify-between text-[10px] mb-1">
+                                <span className="text-gray-600 tabular-nums">Payé : {fcfa(paye)}</span>
+                                <span className="text-gray-700">{pct}%</span>
+                              </div>
+                              <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : pct > 0 ? 'bg-blue-500' : 'bg-white/[0.06]'}`}
+                                  style={{ width: `${pct}%` }} />
+                              </div>
+                              {restant > 0 && (
+                                <p className="text-gray-700 text-[10px] mt-1 tabular-nums">Restant : {fcfa(restant)}</p>
+                              )}
                             </div>
-                            <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : pct > 0 ? 'bg-blue-500' : 'bg-white/[0.06]'}`}
-                                style={{ width: `${pct}%` }} />
-                            </div>
-                            {restant > 0 && (
-                              <p className="text-gray-700 text-[10px] mt-1">Restant : {fcfa(restant)}</p>
-                            )}
-                          </div>
-                        )}
+                          )}
+                        </div>
+                        <div className="text-right hidden sm:block shrink-0 ml-2">
+                          <p className="text-white text-[14px] font-bold whitespace-nowrap tabular-nums">{fcfa(ttc)}</p>
+                          <p className="text-gray-700 text-[11px]">TTC</p>
+                        </div>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="text-right hidden sm:block">
-                        <p className="text-white text-[14px] font-bold">{fcfa(ttc)}</p>
-                        <p className="text-gray-700 text-[11px]">TTC</p>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        {/* Modifier client */}
-                        <button onClick={() => openAddClient(f)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white text-[11px] font-medium transition-colors opacity-0 group-hover:opacity-100"
-                          title="Modifier les infos client">
-                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3"><path d="M8 2a3 3 0 110 6 3 3 0 010-6zM2 14c0-3 2.5-5 6-5s6 2 6 5" strokeLinecap="round"/></svg>
+                  {/* Ligne actions */}
+                  <div className="mt-2.5 ml-12 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {f.statut !== 'paye' && (
+                        <button onClick={() => setPaiementTarget(f)}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-medium transition-colors">
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3"><path d="M2 8l5 5L14 3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          Paiement
                         </button>
-                        {/* Paiement */}
-                        {f.statut !== 'paye' && (
-                          <button onClick={() => setPaiementTarget(f)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-medium transition-colors">
-                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3"><path d="M2 8l5 5L14 3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                            Paiement
-                          </button>
-                        )}
-                        {/* Modifier */}
-                        <button onClick={() => setEditTarget(f)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-[11px] font-medium transition-colors"
-                          title="Modifier la facture">
-                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3">
-                            <path d="M11.333 2a1.886 1.886 0 112.667 2.667L5.167 13.5 2 14l.5-3.167L11.333 2z" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                          Modifier
-                        </button>
-                        {/* Voir devis associé */}
-                        {f.devis_id && (
-                          <Link href="/dashboard/devis"
-                            className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors" title="Voir le devis">
-                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M14 2H6a1.5 1.5 0 00-1.5 1.5v10A1.5 1.5 0 006 15h8a1.5 1.5 0 001.5-1.5v-10A1.5 1.5 0 0014 2z"/><path d="M14 2v4h-4M8 9h4M8 12h2" strokeLinecap="round"/></svg>
-                          </Link>
-                        )}
-                        {/* Supprimer */}
-                        <button onClick={() => setDeleteTarget(f)}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Supprimer">
-                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8L13 4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        </button>
-                      </div>
+                      )}
+                      <button onClick={() => setEditTarget(f)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-[11px] font-medium transition-colors">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3">
+                          <path d="M11.333 2a1.886 1.886 0 112.667 2.667L5.167 13.5 2 14l.5-3.167L11.333 2z" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        Modifier
+                      </button>
+                      {f.devis_id && (
+                        <Link href="/dashboard/devis"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors" title="Voir le devis">
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M14 2H6a1.5 1.5 0 00-1.5 1.5v10A1.5 1.5 0 006 15h8a1.5 1.5 0 001.5-1.5v-10A1.5 1.5 0 0014 2z"/><path d="M14 2v4h-4M8 9h4M8 12h2" strokeLinecap="round"/></svg>
+                        </Link>
+                      )}
+                      <button onClick={() => downloadFacturePDF(f)}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors" title="Télécharger PDF">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M8 2v8M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </button>
+                      <button onClick={() => setDeleteTarget(f)}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors" title="Supprimer">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8L13 4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </button>
                     </div>
+                    <p className="text-white text-[13px] font-bold whitespace-nowrap tabular-nums sm:hidden">{fcfa(ttc)}</p>
                   </div>
                 </div>
               )
@@ -393,46 +469,30 @@ export default function FacturesPage() {
         )}
       </div>
 
-      {/* ── Modal ajout / modification client ── */}
-      {clientTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setClientTarget(null) }}>
+      {/* ── Modal ajout téléphone legacy ── */}
+      {telTarget && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={e => { if (e.target === e.currentTarget) setTelTarget(null) }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-md bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+          <div className="relative w-full max-w-sm bg-[#232323] rounded-t-3xl sm:rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+            <div className="sm:hidden flex justify-center -mt-3 mb-3"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h3 className="text-white text-[15px] font-semibold">Informations client</h3>
-                <p className="text-gray-600 text-[12px] mt-0.5">{clientTarget.numero}</p>
+                <h3 className="text-white text-[15px] font-semibold">Téléphone du client</h3>
+                <p className="text-gray-600 text-[12px] mt-0.5">{telTarget.numero}</p>
               </div>
-              <button onClick={() => setClientTarget(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setTelTarget(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M3 3l10 10M13 3L3 13" strokeLinecap="round"/></svg>
               </button>
             </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Nom complet du client</label>
-                <input type="text" value={clientNomVal} onChange={e => setClientNomVal(e.target.value)}
-                  placeholder="Ex: M. Traoré Amadou" autoFocus
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Téléphone WhatsApp</label>
-                <input type="tel" value={clientTelVal} onChange={e => setClientTelVal(e.target.value)}
-                  placeholder="+223 76 00 00 00"
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Email</label>
-                <input type="email" value={clientEmailVal} onChange={e => setClientEmailVal(e.target.value)}
-                  placeholder="client@email.com"
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
-              </div>
-            </div>
-            <p className="text-gray-700 text-[11px] mt-3">Les informations seront aussi mises à jour sur le chantier associé.</p>
+            <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Téléphone WhatsApp</label>
+            <input type="tel" value={telVal} onChange={e => setTelVal(e.target.value)} autoFocus
+              placeholder="+223 76 00 00 00"
+              className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all" />
             <div className="flex gap-3 mt-5">
-              <button onClick={() => setClientTarget(null)} className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-gray-400 text-[13px] font-medium">Annuler</button>
-              <button onClick={handleSaveClient} disabled={savingClient || !clientNomVal.trim()}
+              <button onClick={() => setTelTarget(null)} className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-gray-400 text-[13px] font-medium">Annuler</button>
+              <button onClick={handleSaveTel} disabled={savingTel || !telVal.trim()}
                 className="flex-1 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold disabled:opacity-60 flex items-center justify-center gap-2">
-                {savingClient ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Enregistrement…</> : 'Enregistrer'}
+                {savingTel ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Enregistrement…</> : 'Enregistrer'}
               </button>
             </div>
           </div>
@@ -441,9 +501,10 @@ export default function FacturesPage() {
 
       {/* ── Modal paiement ── */}
       {paiementTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setPaiementTarget(null) }}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={e => { if (e.target === e.currentTarget) setPaiementTarget(null) }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-md bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+          <div className="relative w-full max-w-md bg-[#232323] rounded-t-3xl sm:rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+            <div className="sm:hidden flex justify-center -mt-3 mb-3"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <h3 className="text-white text-[15px] font-semibold mb-1">Enregistrer un paiement</h3>
             <p className="text-gray-600 text-[12px] mb-5">{paiementTarget.numero} · {getClientNom(paiementTarget) ?? '—'}</p>
             <div className="bg-[#1C1C1C] rounded-xl p-4 mb-5 space-y-2">
@@ -464,7 +525,7 @@ export default function FacturesPage() {
             <div className="mb-4">
               <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Montant reçu (FCFA)</label>
               <input type="number" min="0" value={montantPaiement} onChange={e => setMontantPaiement(e.target.value)}
-                className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
+                className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all" />
             </div>
             <div className="mb-5">
               <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-widest">Mode de paiement</label>
@@ -491,9 +552,10 @@ export default function FacturesPage() {
 
       {/* ── Modal édition ── */}
       {editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setEditTarget(null) }}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={e => { if (e.target === e.currentTarget) setEditTarget(null) }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-md bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+          <div className="relative w-full max-w-md bg-[#232323] rounded-t-3xl sm:rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+            <div className="sm:hidden flex justify-center -mt-3 mb-3"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-white text-[15px] font-semibold">Modifier la facture</h3>
@@ -507,7 +569,7 @@ export default function FacturesPage() {
               <div>
                 <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Date d&apos;échéance</label>
                 <input type="date" value={editDateEcheance} onChange={e => setEditDateEcheance(e.target.value)}
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all [color-scheme:dark]" />
+                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all [color-scheme:dark]" />
                 {editDateEcheance && (() => {
                   const t = new Date(); t.setHours(0,0,0,0)
                   const e = new Date(editDateEcheance); e.setHours(0,0,0,0)
@@ -534,11 +596,11 @@ export default function FacturesPage() {
               <div>
                 <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-widest">Statut</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {STATUTS_FACTURE.map(s => (
-                    <button key={s.value} type="button" onClick={() => setEditStatut(s.value)}
-                      className={`py-2 px-3 rounded-xl border text-[11px] font-medium transition-colors text-left ${editStatut === s.value ? 'border-orange-500 bg-orange-500/10 text-orange-400' : 'border-white/[0.06] hover:border-white/[0.12] text-gray-500'}`}>
-                      <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${s.badge.split(' ')[0]}`} />
-                      {s.label}
+                  {Object.entries(STATUTS_FACTURE).map(([key, def]) => (
+                    <button key={key} type="button" onClick={() => setEditStatut(key)}
+                      className={`py-2 px-3 rounded-xl border text-[11px] font-medium transition-colors text-left ${editStatut === key ? 'border-orange-500 bg-orange-500/10 text-orange-400' : 'border-white/[0.06] hover:border-white/[0.12] text-gray-500'}`}>
+                      <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${statutBarClass('facture', key)}`} />
+                      {def.label}
                     </button>
                   ))}
                 </div>
@@ -547,7 +609,7 @@ export default function FacturesPage() {
                 <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Notes</label>
                 <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)}
                   placeholder="Informations supplémentaires…" rows={3}
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all resize-none" />
+                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all resize-none" />
               </div>
             </div>
             <div className="flex gap-3 mt-5">
@@ -563,9 +625,10 @@ export default function FacturesPage() {
 
       {/* ── Modal suppression ── */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setDeleteTarget(null) }}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={e => { if (e.target === e.currentTarget) setDeleteTarget(null) }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-sm bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+          <div className="relative w-full max-w-sm bg-[#232323] rounded-t-3xl sm:rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+            <div className="sm:hidden flex justify-center -mt-3 mb-3"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <h3 className="text-white text-[15px] font-semibold text-center mb-2">Supprimer la facture ?</h3>
             <p className="text-gray-500 text-[13px] text-center mb-5">
               <span className="text-white font-medium">{deleteTarget.numero}</span> sera définitivement supprimée.

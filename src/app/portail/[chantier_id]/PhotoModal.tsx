@@ -1,87 +1,149 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 type Photo = { id: string; url: string; nom: string | null; legende: string | null; prise_le: string }
 
-function relativeTime(dateStr: string): string {
-  const now  = new Date()
-  const date = new Date(dateStr)
-  const diffMs    = now.getTime() - date.getTime()
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays  = Math.floor(diffHours / 24)
-  const time = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-  if (diffHours < 1)  return 'Il y a moins d\'une heure'
-  if (diffDays === 0) return `Aujourd'hui à ${time}`
-  if (diffDays === 1) return `Hier à ${time}`
-  if (diffDays < 7)   return `Il y a ${diffDays} jours`
-  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+function fmtDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 export default function PhotoModal({ photos }: { photos: Photo[] }) {
-  const [modal, setModal] = useState<Photo | null>(null)
+  const [index, setIndex] = useState<number | null>(null)
+
+  const close = useCallback(() => setIndex(null), [])
+  const prev  = useCallback(() => setIndex(i => (i !== null && i > 0 ? i - 1 : i)), [])
+  const next  = useCallback(() => setIndex(i => (i !== null && i < photos.length - 1 ? i + 1 : i)), [photos.length])
+
+  useEffect(() => {
+    if (index === null) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape')     close()
+      if (e.key === 'ArrowLeft')  prev()
+      if (e.key === 'ArrowRight') next()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [index, close, prev, next])
 
   if (photos.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
-        <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-8 h-8 text-orange-300">
-            <rect x="3" y="3" width="18" height="18" rx="3"/>
-            <circle cx="8.5" cy="8.5" r="1.5"/>
-            <path d="M21 15l-5-5L5 21" strokeLinecap="round" strokeLinejoin="round"/>
+      <div className="py-10 text-center">
+        <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center mx-auto mb-3">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-6 h-6 text-gray-300">
+            <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </div>
-        <p className="text-gray-600 text-[14px] font-semibold mb-1">Aucune photo pour l'instant</p>
-        <p className="text-gray-400 text-[12px]">Les photos seront ajoutées prochainement</p>
+        <p className="text-[#6B7280] text-sm">Aucune photo pour ce chantier</p>
       </div>
     )
   }
 
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {photos.map(photo => (
+      {/* ── Grille 2 colonnes ── */}
+      <div className="grid grid-cols-2 gap-3">
+        {photos.map((p, i) => (
           <button
-            key={photo.id}
-            onClick={() => setModal(photo)}
-            className="group relative aspect-square bg-gray-100 rounded-xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition-all"
+            key={p.id}
+            onClick={() => setIndex(i)}
+            className="text-left focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2 rounded-xl"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photo.url}
-              alt={photo.nom ?? 'Photo chantier'}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent">
-              <div className="absolute bottom-0 left-0 right-0 px-2 py-2">
-                <p className="text-white text-[10px] font-medium leading-tight">{relativeTime(photo.prise_le)}</p>
-                {photo.legende && <p className="text-white/70 text-[9px] truncate mt-0.5">{photo.legende}</p>}
-              </div>
+            {/* Image */}
+            <div className="aspect-square rounded-xl overflow-hidden bg-gray-100">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={p.url}
+                alt={p.nom ?? `Photo ${i + 1}`}
+                className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+              />
+            </div>
+
+            {/* Légende + date SOUS la photo */}
+            <div className="mt-2 px-0.5">
+              {p.legende && (
+                <p className="text-[#1C1C1C] text-[12px] font-medium leading-tight truncate">{p.legende}</p>
+              )}
+              <p className="text-[#6B7280] text-[11px] mt-0.5">{fmtDate(p.prise_le)}</p>
             </div>
           </button>
         ))}
       </div>
 
-      {modal && (
+      {/* ── Modal ── */}
+      {index !== null && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setModal(null)}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/90 p-0 sm:p-4"
+          onClick={close}
         >
-          <div className="relative max-w-lg w-full" onClick={e => e.stopPropagation()}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={modal.url} alt={modal.nom ?? ''} className="w-full rounded-2xl shadow-2xl" />
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-4 py-4 rounded-b-2xl">
-              <p className="text-white text-[12px] font-semibold">{relativeTime(modal.prise_le)}</p>
-              {modal.legende && <p className="text-white/70 text-[11px] mt-0.5">{modal.legende}</p>}
+          <div
+            className="bg-[#111] w-full sm:w-auto sm:max-w-3xl rounded-t-3xl sm:rounded-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drag handle mobile */}
+            <div className="sm:hidden flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 bg-white/20 rounded-full" />
             </div>
-            <button
-              onClick={() => setModal(null)}
-              className="absolute top-3 right-3 w-9 h-9 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition-colors"
-            >
-              <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2" className="w-4 h-4">
-                <path d="M3 3l10 10M13 3L3 13" strokeLinecap="round"/>
-              </svg>
-            </button>
+
+            {/* Top bar */}
+            <div className="flex items-center justify-between px-4 py-3">
+              <p className="text-white/40 text-[12px] tabular-nums">
+                {index + 1} / {photos.length}
+              </p>
+              <button
+                onClick={close}
+                className="w-8 h-8 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
+                aria-label="Fermer"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 text-white">
+                  <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Image */}
+            <div className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photos[index].url}
+                alt={photos[index].nom ?? `Photo ${index + 1}`}
+                className="w-full max-h-[60vh] object-contain"
+              />
+
+              {/* Prev */}
+              {index > 0 && (
+                <button
+                  onClick={prev}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/40 hover:bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center transition-colors"
+                  aria-label="Photo precedente"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 text-white">
+                    <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              )}
+
+              {/* Next */}
+              {index < photos.length - 1 && (
+                <button
+                  onClick={next}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/40 hover:bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center transition-colors"
+                  aria-label="Photo suivante"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 text-white">
+                    <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {/* Info photo */}
+            <div className="px-4 py-4">
+              {photos[index].legende && (
+                <p className="text-white/80 text-[13px] font-medium mb-1">{photos[index].legende}</p>
+              )}
+              <p className="text-white/40 text-[12px]">{fmtDate(photos[index].prise_le)}</p>
+            </div>
           </div>
         </div>
       )}

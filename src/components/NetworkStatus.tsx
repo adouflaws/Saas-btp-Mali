@@ -46,8 +46,8 @@ export default function NetworkStatus() {
       isOnline ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'
     }`}>
       {isOnline
-        ? '🟢 Connexion rétablie — Données synchronisées'
-        : `🟡 Hors ligne — Les données seront synchronisées au retour du réseau${pending > 0 ? ` · ${pending} action${pending > 1 ? 's' : ''} en attente` : ''}`
+        ? 'Connexion rétablie — Données synchronisées'
+        : `Hors ligne — Les données seront synchronisées au retour du réseau${pending > 0 ? ` · ${pending} action${pending > 1 ? 's' : ''} en attente` : ''}`
       }
     </div>
   )

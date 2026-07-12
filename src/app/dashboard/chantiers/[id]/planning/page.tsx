@@ -3,6 +3,9 @@
 import { use, useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { cacheSet, cacheGet, queueAdd } from '@/lib/offline'
+import StatusBadge, { statutBarClass, statutBadgeClasses } from '@/components/StatusBadge'
+import { STATUTS_TACHE } from '@/constants/statuts'
 
 const supabase = createClient()
 
@@ -39,13 +42,6 @@ const DEFAULT_FORM: FormData = {
   avancement: '0',
 }
 
-const STATUTS = [
-  { value: 'a_faire',  label: 'À faire',   badge: 'bg-gray-500/10 text-gray-400',    bar: 'bg-gray-500' },
-  { value: 'en_cours', label: 'En cours',  badge: 'bg-orange-500/10 text-orange-400', bar: 'bg-orange-500' },
-  { value: 'termine',  label: 'Terminé',   badge: 'bg-emerald-500/10 text-emerald-400', bar: 'bg-emerald-500' },
-  { value: 'bloque',   label: 'Bloqué',    badge: 'bg-red-500/10 text-red-400',      bar: 'bg-red-500' },
-]
-
 const PRIORITES = [
   { value: 'basse',    label: 'Basse',    color: 'text-gray-400' },
   { value: 'normale',  label: 'Normale',  color: 'text-blue-400' },
@@ -53,7 +49,6 @@ const PRIORITES = [
   { value: 'critique', label: 'Critique', color: 'text-red-400' },
 ]
 
-function getStatut(v: string | null) { return STATUTS.find(s => s.value === v) ?? STATUTS[0] }
 function getPriorite(v: string | null) { return PRIORITES.find(p => p.value === v) ?? PRIORITES[1] }
 
 function daysBetween(a: Date, b: Date) { return Math.round((b.getTime() - a.getTime()) / 86400000) }
@@ -75,7 +70,31 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
   const [deleteTarget, setDeleteTarget] = useState<Tache | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  )
+  const [offlineMsg, setOfflineMsg] = useState('')
+
+  /* ── Détection réseau ── */
+  useEffect(() => {
+    const onOnline  = () => setIsOnline(true)
+    const onOffline = () => setIsOnline(false)
+    window.addEventListener('online',  onOnline)
+    window.addEventListener('offline', onOffline)
+    return () => {
+      window.removeEventListener('online',  onOnline)
+      window.removeEventListener('offline', onOffline)
+    }
+  }, [])
+
   const fetchTaches = useCallback(async () => {
+    /* Offline : charger depuis localStorage */
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const cached = cacheGet<Tache[]>(`taches_${chantierId}`)
+      if (cached) setTaches(cached)
+      else setPageError('Hors ligne — aucune tâche en cache disponible.')
+      return
+    }
     const { data, error } = await supabase
       .from('taches')
       .select('*')
@@ -83,13 +102,28 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
       .order('ordre', { ascending: true })
       .order('created_at', { ascending: true })
     if (error) setPageError(error.message)
-    else setTaches(data ?? [])
+    else {
+      setTaches(data ?? [])
+      /* Sauvegarder pour usage offline */
+      if (data) cacheSet(`taches_${chantierId}`, data)
+    }
   }, [chantierId])
 
   useEffect(() => {
     async function init() {
       setLoading(true)
-      const [{ data: c }, ] = await Promise.all([
+
+      /* Offline : utiliser le cache chantiers existant */
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        const cachedChantiers = cacheGet<Array<{ id: string; nom: string; ville: string | null }>>('chantiers')
+        const found = cachedChantiers?.find(ch => ch.id === chantierId)
+        if (found) setChantier(found)
+        await fetchTaches()
+        setLoading(false)
+        return
+      }
+
+      const [{ data: c }] = await Promise.all([
         supabase.from('chantiers').select('id, nom, ville').eq('id', chantierId).single(),
         fetchTaches(),
       ])
@@ -123,6 +157,11 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
   }
   function setField(k: keyof FormData, v: string) { setForm(f => ({ ...f, [k]: v })) }
 
+  function showOfflineToast(msg: string) {
+    setOfflineMsg(msg)
+    setTimeout(() => setOfflineMsg(''), 4500)
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true); setFormError('')
@@ -134,6 +173,33 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
       date_fin_prevue: form.date_fin_prevue || null,
       avancement: Math.min(100, Math.max(0, Number(form.avancement) || 0)),
     }
+
+    /* ── Mode hors ligne : mettre en queue + mise à jour optimiste ── */
+    if (!isOnline) {
+      if (editId) {
+        queueAdd({ table: 'taches', op: 'update', data: payload as Record<string, unknown>, rowId: editId })
+        const updated = taches.map(t => t.id === editId ? { ...t, ...payload } : t)
+        setTaches(updated)
+        cacheSet(`taches_${chantierId}`, updated)
+      } else {
+        queueAdd({ table: 'taches', op: 'insert', data: { ...payload, chantier_id: chantierId } as Record<string, unknown> })
+        const tempTache: Tache = {
+          id: `temp_${Date.now()}`,
+          chantier_id: chantierId,
+          ...payload,
+          ordre: null,
+          created_at: new Date().toISOString(),
+        }
+        const updated = [...taches, tempTache]
+        setTaches(updated)
+        cacheSet(`taches_${chantierId}`, updated)
+      }
+      setShowModal(false); setSaving(false)
+      showOfflineToast('Tâche sauvegardée localement — sera synchronisée au retour du réseau')
+      return
+    }
+
+    /* ── Mode en ligne : envoi Supabase ── */
     let err
     if (editId) {
       const r = await supabase.from('taches').update(payload).eq('id', editId)
@@ -148,18 +214,41 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
 
   async function handleDelete() {
     if (!deleteTarget) return
+    if (!isOnline) {
+      showOfflineToast('📡 Impossible de supprimer hors ligne — reconnectez-vous d\'abord')
+      setDeleteTarget(null)
+      return
+    }
     setDeleting(true)
     const { error } = await supabase.from('taches').delete().eq('id', deleteTarget.id)
     if (error) setPageError(error.message)
     setDeleteTarget(null); setDeleting(false); await fetchTaches()
   }
 
-  // Progression globale = moyenne avancement
+  /* Basculer statut tâche (checkbox) */
+  async function toggleTacheStatut(t: Tache) {
+    const newStatut = t.statut === 'termine' ? 'en_cours' : 'termine'
+    const newAv = newStatut === 'termine' ? 100 : t.avancement
+    const updateData = { statut: newStatut, avancement: newAv }
+
+    if (!isOnline) {
+      queueAdd({ table: 'taches', op: 'update', data: updateData as Record<string, unknown>, rowId: t.id })
+      const updated = taches.map(task => task.id === t.id ? { ...task, ...updateData } : task)
+      setTaches(updated)
+      cacheSet(`taches_${chantierId}`, updated)
+      showOfflineToast('Modification sauvegardée localement — sera synchronisée au retour du réseau')
+      return
+    }
+    await supabase.from('taches').update(updateData).eq('id', t.id)
+    await fetchTaches()
+  }
+
+  /* Progression globale = moyenne avancement */
   const progression = taches.length > 0
     ? Math.round(taches.reduce((acc, t) => acc + (t.avancement ?? 0), 0) / taches.length)
     : 0
 
-  // Données Gantt
+  /* Données Gantt */
   const tachesAvecDates = taches.filter(t => t.date_debut && t.date_fin_prevue)
   let ganttMin: Date | null = null
   let ganttMax: Date | null = null
@@ -172,7 +261,24 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
   const todayPct = ganttMin ? Math.min(100, Math.max(0, daysBetween(ganttMin, today) / totalDays * 100)) : null
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 md:p-8">
+
+      {/* Toast hors ligne */}
+      {offlineMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[90vw] sm:w-auto flex items-start gap-2.5 bg-amber-600 text-white text-[13px] font-semibold px-5 py-3 rounded-xl shadow-xl">
+          <span className="shrink-0 text-base mt-0.5">📶</span>
+          <span>{offlineMsg}</span>
+        </div>
+      )}
+
+      {/* Bandeau hors ligne */}
+      {!isOnline && (
+        <div className="mb-4 flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl px-4 py-2.5 text-[13px]">
+          <span>📡</span>
+          <span>Mode hors ligne — les modifications seront sauvegardées localement</span>
+        </div>
+      )}
+
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-[12px] text-gray-600 mb-6">
         <Link href="/dashboard/chantiers" className="hover:text-gray-400 transition-colors">Chantiers</Link>
@@ -183,14 +289,14 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
       </div>
 
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">{chantier?.nom ?? '...'}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">{chantier?.nom ?? '...'}</h1>
           <p className="text-gray-500 text-sm mt-1">Planning & suivi des tâches</p>
         </div>
         <button
           onClick={openNew}
-          className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors shrink-0"
+          className="flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors w-full sm:w-auto"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
@@ -200,14 +306,16 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-[#1a1a1a] rounded-xl p-1 mb-6 w-fit">
-        <span className="px-4 py-2 rounded-lg bg-orange-500/10 text-orange-400 text-[13px] font-medium">
-          Tâches
-        </span>
-        <Link href={`/dashboard/chantiers/${chantierId}/jalons`}
-          className="px-4 py-2 rounded-lg text-gray-500 hover:text-gray-200 text-[13px] font-medium transition-colors">
-          Jalons
-        </Link>
+      <div className="overflow-x-auto mb-6">
+        <div className="flex gap-1 bg-[#1a1a1a] rounded-xl p-1 w-fit">
+          <span className="px-4 py-2 rounded-lg bg-orange-500/10 text-orange-400 text-[13px] font-medium">
+            Tâches
+          </span>
+          <Link href={`/dashboard/chantiers/${chantierId}/jalons`}
+            className="px-4 py-2 rounded-lg text-gray-500 hover:text-gray-200 text-[13px] font-medium transition-colors">
+            Jalons
+          </Link>
+        </div>
       </div>
 
       {/* Erreur */}
@@ -238,11 +346,11 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
           />
         </div>
         <div className="flex justify-between mt-2">
-          {STATUTS.map(s => {
-            const count = taches.filter(t => t.statut === s.value).length
+          {Object.entries(STATUTS_TACHE).map(([key, def]) => {
+            const count = taches.filter(t => t.statut === key).length
             return count > 0 ? (
-              <span key={s.value} className={`text-[11px] px-2 py-0.5 rounded-full ${s.badge}`}>
-                {count} {s.label.toLowerCase()}
+              <span key={key} className={`text-[11px] px-2 py-0.5 rounded-full ${statutBadgeClasses('tache', key)}`}>
+                {count} {def.label.toLowerCase()}
               </span>
             ) : null
           })}
@@ -254,7 +362,6 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
         <div className="bg-[#232323] rounded-2xl border border-white/[0.06] p-6 mb-6">
           <h2 className="text-[15px] font-semibold text-white mb-5">Diagramme de Gantt</h2>
           <div className="relative">
-            {/* Ligne aujourd'hui */}
             {todayPct !== null && todayPct >= 0 && todayPct <= 100 && (
               <div className="absolute top-0 bottom-0 z-10 pointer-events-none" style={{ left: `${todayPct}%` }}>
                 <div className="w-px h-full bg-orange-400/60 border-l border-dashed border-orange-400/60" />
@@ -263,15 +370,12 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
                 </div>
               </div>
             )}
-
-            {/* Barres */}
             <div className="pt-6 space-y-2">
               {tachesAvecDates.map(t => {
                 const start = new Date(t.date_debut!)
                 const end = new Date(t.date_fin_prevue!)
                 const leftPct = daysBetween(ganttMin!, start) / totalDays * 100
                 const widthPct = Math.max(1, daysBetween(start, end) / totalDays * 100)
-                const statut = getStatut(t.statut)
                 return (
                   <div key={t.id} className="flex items-center gap-3">
                     <div className="w-36 shrink-0 text-right">
@@ -279,7 +383,7 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
                     </div>
                     <div className="flex-1 h-7 bg-white/[0.04] rounded-lg relative overflow-hidden">
                       <div
-                        className={`absolute top-1 bottom-1 rounded-md ${statut.bar} flex items-center px-2 min-w-[4px]`}
+                        className={`absolute top-1 bottom-1 rounded-md ${statutBarClass('tache', t.statut)} flex items-center px-2 min-w-[4px]`}
                         style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                       >
                         {widthPct > 8 && (
@@ -287,7 +391,6 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
                             {t.avancement ?? 0}%
                           </span>
                         )}
-                        {/* Barre avancement */}
                         <div
                           className="absolute inset-0 bg-black/20 rounded-md"
                           style={{ left: `${t.avancement ?? 0}%` }}
@@ -298,8 +401,6 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
                 )
               })}
             </div>
-
-            {/* Légende dates */}
             <div className="flex justify-between mt-3 px-[9.5rem]">
               <span className="text-[10px] text-gray-700">
                 {ganttMin.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
@@ -341,7 +442,6 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
         ) : (
           <div className="divide-y divide-white/[0.04]">
             {taches.map(t => {
-              const statut = getStatut(t.statut)
               const priorite = getPriorite(t.priorite)
               return (
                 <div key={t.id} className="px-6 py-4 hover:bg-white/[0.02] transition-colors">
@@ -349,12 +449,7 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
                     <div className="flex items-start gap-3 min-w-0">
                       {/* Checkbox visuel */}
                       <button
-                        onClick={async () => {
-                          const newStatut = t.statut === 'termine' ? 'en_cours' : 'termine'
-                          const newAv = newStatut === 'termine' ? 100 : t.avancement
-                          await supabase.from('taches').update({ statut: newStatut, avancement: newAv }).eq('id', t.id)
-                          await fetchTaches()
-                        }}
+                        onClick={() => toggleTacheStatut(t)}
                         className={`mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
                           t.statut === 'termine'
                             ? 'bg-emerald-500 border-emerald-500'
@@ -386,7 +481,7 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
                         {t.statut !== 'a_faire' && (
                           <div className="flex items-center gap-2 mt-2">
                             <div className="flex-1 h-1.5 bg-white/[0.06] rounded-full overflow-hidden max-w-[120px]">
-                              <div className={`h-full rounded-full ${statut.bar}`} style={{ width: `${t.avancement ?? 0}%` }} />
+                              <div className={`h-full rounded-full ${statutBarClass('tache', t.statut)}`} style={{ width: `${t.avancement ?? 0}%` }} />
                             </div>
                             <span className="text-gray-600 text-[11px]">{t.avancement ?? 0}%</span>
                           </div>
@@ -395,9 +490,7 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${statut.badge}`}>
-                        {statut.label}
-                      </span>
+                      <StatusBadge type="tache" statut={t.statut} />
                       <button onClick={() => openEdit(t)}
                         className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors">
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
@@ -421,10 +514,11 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
 
       {/* Modal formulaire */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-[#232323] rounded-t-3xl sm:rounded-2xl border border-white/[0.08] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sm:hidden flex justify-center pt-3 pb-1"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06]">
               <h2 className="text-[15px] font-semibold text-white">
                 {editId ? 'Modifier la tâche' : 'Nouvelle tâche'}
@@ -453,21 +547,21 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
                 </label>
                 <input type="text" value={form.nom} onChange={e => setField('nom', e.target.value)} required
                   placeholder="Ex: Fondations coulées"
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
+                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Statut</label>
                   <select value={form.statut} onChange={e => setField('statut', e.target.value)}
-                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all">
-                    {STATUTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all">
+                    {Object.entries(STATUTS_TACHE).map(([key, def]) => <option key={key} value={key}>{def.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Priorité</label>
                   <select value={form.priorite} onChange={e => setField('priorite', e.target.value)}
-                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all">
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all">
                     {PRIORITES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
@@ -480,7 +574,7 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
                       {i === 0 ? 'Date début' : 'Date fin prévue'}
                     </label>
                     <input type="date" value={form[k]} onChange={e => setField(k, e.target.value)}
-                      className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
+                      className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all" />
                   </div>
                 ))}
               </div>
@@ -519,10 +613,11 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
 
       {/* Modal suppression */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={e => { if (e.target === e.currentTarget) setDeleteTarget(null) }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-sm bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+          <div className="relative w-full max-w-sm bg-[#232323] rounded-t-3xl sm:rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+            <div className="sm:hidden flex justify-center -mt-3 mb-3"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="w-11 h-11 bg-red-500/10 rounded-2xl flex items-center justify-center mb-4 mx-auto">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5 text-red-400">
                 <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round" />

@@ -1,8 +1,11 @@
-'use client'
+﻿'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { useActionGuard } from '@/hooks/useActionGuard'
+import StatusBadge, { statutBarClass } from '@/components/StatusBadge'
+import { STATUTS_TACHE } from '@/constants/statuts'
 
 const supabase = createClient()
 
@@ -54,13 +57,6 @@ const DEFAULT_FORM: FormData = {
   avancement: '0',
 }
 
-const STATUTS = [
-  { value: 'a_faire',  label: 'À faire',  badge: 'bg-gray-500/10 text-gray-400',      bar: 'bg-gray-500' },
-  { value: 'en_cours', label: 'En cours', badge: 'bg-orange-500/10 text-orange-400',   bar: 'bg-orange-500' },
-  { value: 'termine',  label: 'Terminé',  badge: 'bg-emerald-500/10 text-emerald-400', bar: 'bg-emerald-500' },
-  { value: 'bloque',   label: 'Bloqué',   badge: 'bg-red-500/10 text-red-400',         bar: 'bg-red-500' },
-]
-
 const PRIORITES = [
   { value: 'basse',    label: 'Basse',    color: 'text-gray-400' },
   { value: 'normale',  label: 'Normale',  color: 'text-blue-400' },
@@ -68,10 +64,11 @@ const PRIORITES = [
   { value: 'critique', label: 'Critique', color: 'text-red-400' },
 ]
 
-function getStatut(v: string | null) { return STATUTS.find(s => s.value === v) ?? STATUTS[0] }
 function daysBetween(a: Date, b: Date) { return Math.round((b.getTime() - a.getTime()) / 86400000) }
 
 export default function PlanningPage() {
+  const { guard, isReadOnly } = useActionGuard()
+  const chantierIdsRef = useRef<string[]>([])
   const [chantiers, setChantiers] = useState<Chantier[]>([])
   const [taches, setTaches] = useState<Tache[]>([])
   const [jalons, setJalons] = useState<Jalon[]>([])
@@ -87,15 +84,18 @@ export default function PlanningPage() {
   const [deleteTarget, setDeleteTarget] = useState<Tache | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (chantierIds: string[]) => {
+    if (chantierIds.length === 0) { setTaches([]); setJalons([]); return }
     const [tachesRes, jalonsRes] = await Promise.all([
       supabase
         .from('taches')
         .select('*, chantiers(nom, ville)')
+        .in('chantier_id', chantierIds)
         .order('date_debut', { ascending: true, nullsFirst: false }),
       supabase
         .from('jalons')
         .select('*, chantiers(nom)')
+        .in('chantier_id', chantierIds)
         .eq('atteint', false)
         .order('date_prevue', { ascending: true }),
     ])
@@ -116,16 +116,20 @@ export default function PlanningPage() {
         .eq('id', user.id)
         .single()
 
+      let chantierIds: string[] = []
       if (profile?.entreprise_id) {
         const { data: c } = await supabase
           .from('chantiers')
           .select('id, nom, ville')
           .eq('entreprise_id', profile.entreprise_id)
           .order('nom')
-        setChantiers(c ?? [])
+        const chantierList = c ?? []
+        setChantiers(chantierList)
+        chantierIds = chantierList.map(ch => ch.id)
+        chantierIdsRef.current = chantierIds
       }
 
-      await fetchAll()
+      await fetchAll(chantierIds)
       setLoading(false)
     }
     init()
@@ -191,7 +195,7 @@ export default function PlanningPage() {
     if (err) { setPageError(err.message); setSaving(false); return }
     setShowModal(false)
     setSaving(false)
-    await fetchAll()
+    await fetchAll(chantierIdsRef.current)
   }
 
   async function handleDelete() {
@@ -201,7 +205,7 @@ export default function PlanningPage() {
     if (error) setPageError(error.message)
     setDeleteTarget(null)
     setDeleting(false)
-    await fetchAll()
+    await fetchAll(chantierIdsRef.current)
   }
 
   // Données Gantt : tâches avec des dates
@@ -231,16 +235,16 @@ export default function PlanningPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 md:p-8">
       {/* Header */}
-      <div className="mb-8 flex items-start justify-between">
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Planning</h1>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">Planning</h1>
           <p className="text-gray-500 text-sm mt-1">Vue globale de toutes les tâches et jalons</p>
         </div>
         <button
-          onClick={openNew}
-          className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors"
+          onClick={() => guard(openNew)}
+          className={`flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors w-full sm:w-auto ${isReadOnly ? 'opacity-60' : ''}`}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
@@ -271,11 +275,11 @@ export default function PlanningPage() {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            {STATUTS.map(s => (
-              <div key={s.value} className="flex items-center gap-1.5">
-                <div className={`w-2.5 h-2.5 rounded-sm ${s.bar}`} />
-                <span className="text-gray-600 text-[11px]">{s.label}</span>
+          <div className="hidden sm:flex items-center gap-3 flex-wrap">
+            {Object.entries(STATUTS_TACHE).map(([key, def]) => (
+              <div key={key} className="flex items-center gap-1.5">
+                <div className={`w-2.5 h-2.5 rounded-sm ${statutBarClass('tache', key)}`} />
+                <span className="text-gray-600 text-[11px]">{def.label}</span>
               </div>
             ))}
           </div>
@@ -299,7 +303,8 @@ export default function PlanningPage() {
             <p className="text-gray-600 text-[12px]">Créez des tâches avec date début et date fin pour voir le Gantt</p>
           </div>
         ) : (
-          <div className="p-6">
+          <div className="overflow-x-auto">
+          <div className="p-6 min-w-[580px]">
             <div className="relative">
               {/* Ligne aujourd'hui */}
               {todayPct !== null && todayPct >= 0 && todayPct <= 100 && (
@@ -317,7 +322,6 @@ export default function PlanningPage() {
                   const end = new Date(t.date_fin_prevue!)
                   const leftPct = daysBetween(ganttMin!, start) / totalDays * 100
                   const widthPct = Math.max(1.5, daysBetween(start, end) / totalDays * 100)
-                  const statut = getStatut(t.statut)
 
                   return (
                     <div key={t.id} className="flex items-center gap-3 group">
@@ -328,9 +332,9 @@ export default function PlanningPage() {
                       </div>
                       {/* Barre */}
                       <div className="flex-1 h-8 bg-white/[0.04] rounded-lg relative overflow-hidden cursor-pointer"
-                        onClick={() => openEdit(t)}>
+                        onClick={() => guard(() => openEdit(t))}>
                         <div
-                          className={`absolute top-1.5 bottom-1.5 rounded-md ${statut.bar} opacity-90 hover:opacity-100 transition-opacity flex items-center px-2 min-w-[6px]`}
+                          className={`absolute top-1.5 bottom-1.5 rounded-md ${statutBarClass('tache', t.statut)} opacity-90 hover:opacity-100 transition-opacity flex items-center px-2 min-w-[6px]`}
                           style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
                         >
                           {widthPct > 10 && (
@@ -342,8 +346,8 @@ export default function PlanningPage() {
                         </div>
                       </div>
                       {/* Actions */}
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                        <button onClick={() => openEdit(t)}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => guard(() => openEdit(t))}
                           className="w-6 h-6 flex items-center justify-center rounded bg-white/[0.06] hover:bg-white/[0.12] text-gray-400 hover:text-white transition-colors">
                           <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3 h-3">
                             <path d="M8.5 1.5l2 2-7 7H1.5v-2l7-7z" strokeLinecap="round" strokeLinejoin="round" />
@@ -372,6 +376,7 @@ export default function PlanningPage() {
               </div>
             </div>
           </div>
+          </div>
         )}
       </div>
 
@@ -386,26 +391,25 @@ export default function PlanningPage() {
           </div>
           <div className="divide-y divide-white/[0.04]">
             {taches.filter(t => !t.date_debut).map(t => {
-              const statut = getStatut(t.statut)
               return (
                 <div key={t.id} className="px-6 py-3.5 flex items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors group">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-2 h-2 rounded-full shrink-0 ${statut.bar}`} />
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${statutBarClass('tache', t.statut)}`} />
                     <div className="min-w-0">
                       <p className="text-white text-[13px] font-medium truncate">{t.nom}</p>
                       <p className="text-gray-700 text-[11px]">{t.chantiers?.nom}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${statut.badge}`}>{statut.label}</span>
-                    <button onClick={() => openEdit(t)}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100">
+                    <StatusBadge type="tache" statut={t.statut} />
+                    <button onClick={() => guard(() => openEdit(t))}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors">
                       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
                         <path d="M11.5 2.5l2 2-9 9H2.5v-2l9-9z" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </button>
                     <button onClick={() => setDeleteTarget(t)}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors">
                       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
                         <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8L13 4" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
@@ -449,16 +453,16 @@ export default function PlanningPage() {
               const labelMap = { depasse: 'Dépassé', alerte: 'Proche', ok: 'Prévu' }
 
               return (
-                <div key={j.id} className="px-6 py-4 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
-                  <div className="flex items-center gap-3">
+                <div key={j.id} className="px-6 py-4 flex items-center justify-between gap-3 hover:bg-white/[0.02] transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="w-8 h-8 bg-orange-500/10 rounded-lg flex items-center justify-center shrink-0">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 text-orange-400">
                         <path d="M3 12h4l3 8 4-16 3 8h4" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     </div>
-                    <div>
-                      <p className="text-white text-[13.5px] font-medium">{j.nom}</p>
-                      <p className="text-gray-600 text-[12px]">
+                    <div className="min-w-0">
+                      <p className="text-white text-[13.5px] font-medium truncate">{j.nom}</p>
+                      <p className="text-gray-600 text-[12px] truncate">
                         {j.chantiers?.nom} ·{' '}
                         <Link href={`/dashboard/chantiers/${j.chantier_id}/jalons`}
                           className="text-orange-500/70 hover:text-orange-400 transition-colors">
@@ -467,8 +471,8 @@ export default function PlanningPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-gray-500 text-[12px]">
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-gray-500 text-[12px] hidden sm:inline">
                       {new Date(j.date_prevue).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
                     </span>
                     <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full ${badgeMap[status as keyof typeof badgeMap]}`}>
@@ -484,10 +488,11 @@ export default function PlanningPage() {
 
       {/* Modal formulaire tâche */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-[#232323] rounded-t-3xl sm:rounded-2xl border border-white/[0.08] shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sm:hidden flex justify-center pt-3 pb-1"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06]">
               <h2 className="text-[15px] font-semibold text-white">
                 {editId ? 'Modifier la tâche' : 'Nouvelle tâche'}
@@ -508,7 +513,7 @@ export default function PlanningPage() {
                 </label>
                 <input type="text" value={form.nom} onChange={e => setField('nom', e.target.value)} required
                   placeholder="Ex: Coulage dalle R+2"
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
+                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all" />
               </div>
 
               {/* Chantier */}
@@ -523,7 +528,7 @@ export default function PlanningPage() {
                   </p>
                 ) : (
                   <select value={form.chantier_id} onChange={e => setField('chantier_id', e.target.value)} required
-                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all">
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all">
                     <option value="">Sélectionner un chantier…</option>
                     {chantiers.map(c => (
                       <option key={c.id} value={c.id}>{c.nom}{c.ville ? ` — ${c.ville}` : ''}</option>
@@ -537,14 +542,14 @@ export default function PlanningPage() {
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Statut</label>
                   <select value={form.statut} onChange={e => setField('statut', e.target.value)}
-                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all">
-                    {STATUTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all">
+                    {Object.entries(STATUTS_TACHE).map(([key, def]) => <option key={key} value={key}>{def.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Priorité</label>
                   <select value={form.priorite} onChange={e => setField('priorite', e.target.value)}
-                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all">
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all">
                     {PRIORITES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
@@ -555,12 +560,12 @@ export default function PlanningPage() {
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Date début</label>
                   <input type="date" value={form.date_debut} onChange={e => setField('date_debut', e.target.value)}
-                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all" />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Date fin prévue</label>
                   <input type="date" value={form.date_fin_prevue} onChange={e => setField('date_fin_prevue', e.target.value)}
-                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all" />
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all" />
                 </div>
               </div>
 
@@ -582,7 +587,7 @@ export default function PlanningPage() {
                 <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Description (optionnel)</label>
                 <textarea value={form.description} onChange={e => setField('description', e.target.value)}
                   rows={2} placeholder="Détails supplémentaires…"
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/15 transition-all resize-none" />
+                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all resize-none" />
               </div>
 
               <div className="flex gap-3 pt-2">
@@ -607,10 +612,11 @@ export default function PlanningPage() {
 
       {/* Modal suppression */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={e => { if (e.target === e.currentTarget) setDeleteTarget(null) }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-sm bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+          <div className="relative w-full max-w-sm bg-[#232323] rounded-t-3xl sm:rounded-2xl border border-white/[0.08] shadow-2xl p-6">
+            <div className="sm:hidden flex justify-center -mt-3 mb-3"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="w-11 h-11 bg-red-500/10 rounded-2xl flex items-center justify-center mb-4 mx-auto">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5 text-red-400">
                 <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round" />

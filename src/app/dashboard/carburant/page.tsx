@@ -1,7 +1,9 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import PageSkeleton from '@/components/PageSkeleton'
+import { useActionGuard } from '@/hooks/useActionGuard'
 
 const supabase = createClient()
 
@@ -22,9 +24,6 @@ type Chantier = { id: string; nom: string }
 
 /* ─── Constants ─────────────────────────────────────────────── */
 
-const TYPE_ICONS: Record<string, string> = {
-  camion: '🚛', pick_up: '🛻', engin: '🚜', moto: '🏍️', autre: '🚗',
-}
 const TYPE_LABELS: Record<string, string> = {
   camion: 'Camion', pick_up: 'Pick-up', engin: 'Engin', moto: 'Moto', autre: 'Autre',
 }
@@ -65,6 +64,7 @@ function Spinner() {
 /* ─── Page ───────────────────────────────────────────────────── */
 
 export default function CarburantPage() {
+  const { guard, isReadOnly } = useActionGuard()
   const [entrepriseId, setEntrepriseId] = useState<string | null>(null)
   const [userId, setUserId]             = useState<string | null>(null)
   const [vehicules, setVehicules]       = useState<Vehicule[]>([])
@@ -92,9 +92,11 @@ export default function CarburantPage() {
     const [vRes, pRes, cRes] = await Promise.all([
       supabase.from('vehicules')
         .select('*')
+        .eq('entreprise_id', eid)
         .order('created_at'),
       supabase.from('pleins_carburant')
         .select('*, vehicule:vehicules(nom, type), chantier:chantiers(nom)')
+        .eq('entreprise_id', eid)
         .gte('date_plein', prev.first)
         .order('date_plein', { ascending: false })
         .order('created_at', { ascending: false }),
@@ -191,7 +193,7 @@ export default function CarburantPage() {
     console.log('vehicule_id:', pleinForm.vehicule_id)
     console.log('litres:', pleinForm.litres, '| montant:', pleinForm.montant)
 
-    const { error } = await supabase.from('pleins_carburant').insert({
+    const { data: plein, error } = await supabase.from('pleins_carburant').insert({
       vehicule_id:   pleinForm.vehicule_id,
       chantier_id:   pleinForm.chantier_id || null,
       entreprise_id: profile.entreprise_id,
@@ -201,19 +203,39 @@ export default function CarburantPage() {
       kilometrage:   pleinForm.kilometrage ? Number(pleinForm.kilometrage) : null,
       station:       pleinForm.station.trim() || null,
       saisi_par:     user.id,
-    })
+    }).select('id').single()
 
-    if (error) {
+    if (error || !plein) {
       console.error('Erreur plein:', error)
-      setPleinErr(error.message)
+      setPleinErr(error?.message ?? 'Erreur inconnue')
       setSavingPlein(false); return
+    }
+
+    // Dépense automatique liée à ce plein (source = auto_carburant), uniquement si lié à un chantier
+    if (pleinForm.chantier_id) {
+      const { data: depExistante } = await supabase.from('depenses')
+        .select('id').eq('source', 'auto_carburant').eq('source_id', plein.id).maybeSingle()
+      if (!depExistante) {
+        const vehiculeNom = vehicules.find(v => v.id === pleinForm.vehicule_id)?.nom ?? 'Véhicule'
+        await supabase.from('depenses').insert({
+          entreprise_id: profile.entreprise_id,
+          chantier_id: pleinForm.chantier_id,
+          categorie: 'transport',
+          description: `Carburant ${vehiculeNom} — ${pleinForm.litres}L`,
+          montant: Number(pleinForm.montant),
+          date_depense: pleinForm.date_plein,
+          source: 'auto_carburant',
+          source_id: plein.id,
+          saisi_par: user.id,
+        })
+      }
     }
 
     // Succès
     setShowPlein(false)
     setPleinForm({ ...DEFAULT_PLEIN, date_plein: new Date().toISOString().split('T')[0] })
     setSavingPlein(false)
-    setToast('Plein enregistré ✅')
+    setToast('Plein enregistré')
     setTimeout(() => setToast(''), 3500)
     await fetchAll(profile.entreprise_id)
     // Mettre à jour aussi entrepriseId si nécessaire
@@ -246,31 +268,24 @@ export default function CarburantPage() {
 
   /* ── Loading ── */
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <svg className="animate-spin w-6 h-6 text-orange-400" viewBox="0 0 24 24" fill="none">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-      </svg>
-    </div>
-  )
-
   /* ─────────────────────────────────────────────────────────── */
   /* ── RENDER ── */
   /* ─────────────────────────────────────────────────────────── */
+
+  if (loading) return <PageSkeleton />
 
   return (
     <div className="p-4 sm:p-6 md:p-8">
 
       {/* ── Header ── */}
-      <div className="mb-6 flex items-start justify-between gap-3 flex-wrap">
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-white">Carburant</h1>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">Carburant</h1>
           <p className="text-gray-500 text-sm mt-1">Suivi de consommation des véhicules</p>
         </div>
         <button
-          onClick={() => { setPleinForm({ ...DEFAULT_PLEIN, date_plein: new Date().toISOString().split('T')[0] }); setPleinErr(''); setShowPlein(true) }}
-          className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors min-h-[44px] shrink-0"
+          onClick={() => guard(() => { setPleinForm({ ...DEFAULT_PLEIN, date_plein: new Date().toISOString().split('T')[0] }); setPleinErr(''); setShowPlein(true) })}
+          className="flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors min-h-[44px] w-full sm:w-auto"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
@@ -287,20 +302,18 @@ export default function CarburantPage() {
 
       {/* ── 4 cartes résumé ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {[
-          { label: 'Total ce mois', value: totalCur > 0 ? formatFCFA(totalCur) : '—', icon: '⛽', bg: 'bg-orange-500/10' },
-          { label: 'Pleins ce mois', value: String(pleinsCur.length), icon: '🧾', bg: 'bg-blue-500/10' },
-          { label: 'Véhicules actifs', value: String(vehiculesActifs.length), icon: '🚛', bg: 'bg-emerald-500/10' },
-          {
-            label: 'Coût moyen/plein',
-            value: pleinsCur.length > 0 ? formatFCFA(Math.round(totalCur / pleinsCur.length)) : '—',
-            icon: '📊', bg: 'bg-purple-500/10',
-          },
-        ].map(card => (
+        {([
+          { label: 'Total ce mois',   value: totalCur > 0 ? formatFCFA(totalCur) : '—',
+            icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 text-gray-600"><path d="M3 22V6a2 2 0 012-2h8a2 2 0 012 2v16M3 22h12M3 22H1M15 22h2M15 7h2a2 2 0 012 2v2.5a1.5 1.5 0 003 0V7l-3-3" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+          { label: 'Pleins ce mois',  value: String(pleinsCur.length),
+            icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 text-gray-600"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" strokeLinecap="round"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4" strokeLinecap="round"/></svg> },
+          { label: 'Véhicules actifs', value: String(vehiculesActifs.length),
+            icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 text-gray-600"><path d="M1 3h15l3 6v5H1V3z" strokeLinejoin="round"/><circle cx="5.5" cy="17.5" r="2.5"/><circle cx="18.5" cy="17.5" r="2.5"/></svg> },
+          { label: 'Coût moyen/plein', value: pleinsCur.length > 0 ? formatFCFA(Math.round(totalCur / pleinsCur.length)) : '—',
+            icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 text-gray-600"><path d="M18 20V10M12 20V4M6 20v-6" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+        ] as { label: string; value: string; icon: React.ReactNode }[]).map(card => (
           <div key={card.label} className="bg-[#232323] rounded-2xl border border-white/[0.06] p-4">
-            <div className={`w-9 h-9 ${card.bg} rounded-xl flex items-center justify-center mb-3 text-base`}>
-              {card.icon}
-            </div>
+            <div className="mb-3 text-gray-600">{card.icon}</div>
             <p className="text-white text-base sm:text-lg font-bold leading-none mb-1.5 truncate">{card.value}</p>
             <p className="text-gray-500 text-[11px] sm:text-[12px]">{card.label}</p>
           </div>
@@ -310,7 +323,7 @@ export default function CarburantPage() {
       {/* ── Alerte +30% ── */}
       {hausse && (
         <div className="mb-6 flex items-start gap-3 bg-amber-500/[0.08] border border-amber-500/20 rounded-xl px-4 py-3">
-          <span className="text-xl shrink-0 mt-0.5">⚠️</span>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-4 h-4 shrink-0 mt-0.5 text-amber-400"><path d="M8 2L1.5 13.5h13L8 2z" strokeLinejoin="round" strokeLinecap="round"/><path d="M8 6.5v3M8 11.5v.5" strokeLinecap="round"/></svg>
           <div>
             <p className="text-amber-400 text-[13px] font-semibold">Consommation en hausse ce mois</p>
             <p className="text-amber-500/60 text-[12px] mt-0.5">
@@ -331,7 +344,7 @@ export default function CarburantPage() {
               <span className="ml-2 text-gray-600 text-[12px] font-normal">({vehicules.length})</span>
             </h2>
             <button
-              onClick={() => { setVehiculeForm(DEFAULT_VEHICULE); setVehiculeErr(''); setShowVehicule(true) }}
+              onClick={() => guard(() => { setVehiculeForm(DEFAULT_VEHICULE); setVehiculeErr(''); setShowVehicule(true) })}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-[12px] font-medium transition-colors"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
@@ -343,7 +356,9 @@ export default function CarburantPage() {
 
           {vehicules.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-14 text-center px-4">
-              <span className="text-4xl mb-3">🚗</span>
+              <div className="flex justify-center mb-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-12 h-12 text-gray-700"><path d="M1 3h15l3 6v5H1V3z" strokeLinejoin="round"/><circle cx="5.5" cy="17.5" r="2.5"/><circle cx="18.5" cy="17.5" r="2.5"/></svg>
+            </div>
               <p className="text-white text-[14px] font-medium mb-1">Aucun véhicule</p>
               <p className="text-gray-600 text-[12px]">Ajoutez vos véhicules pour démarrer le suivi</p>
             </div>
@@ -354,8 +369,8 @@ export default function CarburantPage() {
                 const nbPleinsV = pleinsCur.filter(p => p.vehicule_id === v.id).length
                 return (
                   <div key={v.id} className="px-5 py-3.5 flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 ${v.actif ? 'bg-orange-500/10' : 'bg-white/[0.03]'}`}>
-                      {TYPE_ICONS[v.type] ?? '🚗'}
+                    <div className="w-10 h-10 flex items-center justify-center shrink-0">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={`w-5 h-5 ${v.actif ? 'text-gray-500' : 'text-gray-700'}`}><path d="M1 3h15l3 6v5H1V3z" strokeLinejoin="round"/><circle cx="5.5" cy="17.5" r="2.5"/><circle cx="18.5" cy="17.5" r="2.5"/></svg>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 min-w-0">
@@ -416,7 +431,7 @@ export default function CarburantPage() {
                     <tr key={p.id} className="hover:bg-white/[0.02] transition-colors">
                       <td className="px-5 py-3">
                         <p className="text-white text-[13px] font-medium">
-                          {TYPE_ICONS[p.vehicule?.type ?? 'autre']} {p.vehicule?.nom ?? '—'}
+                          {p.vehicule?.nom ?? '—'}
                         </p>
                         {p.chantier?.nom && (
                           <p className="text-gray-600 text-[11px] truncate max-w-[160px]">{p.chantier.nom}</p>
@@ -459,7 +474,7 @@ export default function CarburantPage() {
                   <div key={v.id}>
                     <div className="flex items-center justify-between mb-1.5 gap-2">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="shrink-0 text-sm">{TYPE_ICONS[v.type]}</span>
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5 text-gray-600 shrink-0"><path d="M1 2h10l2 4v3H1V2z" strokeLinejoin="round"/><circle cx="3.5" cy="11.5" r="1.5"/><circle cx="12.5" cy="11.5" r="1.5"/></svg>
                         <span className="text-white text-[13px] font-medium truncate">{v.nom}</span>
                         <span className="text-gray-600 text-[11px] shrink-0">{litres.toFixed(0)} L</span>
                       </div>
@@ -550,7 +565,7 @@ export default function CarburantPage() {
                   className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all">
                   <option value="">— Sélectionner —</option>
                   {vehiculesActifs.map(v => (
-                    <option key={v.id} value={v.id}>{TYPE_ICONS[v.type]} {v.nom}{v.immatriculation ? ` · ${v.immatriculation}` : ''}</option>
+                    <option key={v.id} value={v.id}>{v.nom}{v.immatriculation ? ` · ${v.immatriculation}` : ''}</option>
                   ))}
                 </select>
               </div>
@@ -578,13 +593,13 @@ export default function CarburantPage() {
                   <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Litres *</label>
                   <input type="number" required min="0.1" step="0.1" placeholder="Ex: 45.5"
                     value={pleinForm.litres} onChange={e => setPleinForm(f => ({ ...f, litres: e.target.value }))}
-                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Montant FCFA *</label>
                   <input type="number" required min="1" step="1" placeholder="Ex: 45000"
                     value={pleinForm.montant} onChange={e => setPleinForm(f => ({ ...f, montant: e.target.value }))}
-                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
                 </div>
               </div>
 
@@ -594,13 +609,13 @@ export default function CarburantPage() {
                   <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Kilométrage</label>
                   <input type="number" min="0" placeholder="Ex: 12500"
                     value={pleinForm.kilometrage} onChange={e => setPleinForm(f => ({ ...f, kilometrage: e.target.value }))}
-                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Station</label>
                   <input type="text" placeholder="Ex: Total Bamako"
                     value={pleinForm.station} onChange={e => setPleinForm(f => ({ ...f, station: e.target.value }))}
-                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
                 </div>
               </div>
 
@@ -646,14 +661,14 @@ export default function CarburantPage() {
                 <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Nom *</label>
                 <input type="text" required placeholder="Ex: Camion SINOTRUK 01"
                   value={vehiculeForm.nom} onChange={e => setVehiculeForm(f => ({ ...f, nom: e.target.value }))}
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
+                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
               </div>
 
               <div>
                 <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Immatriculation</label>
                 <input type="text" placeholder="Ex: BM 1234 A"
                   value={vehiculeForm.immatriculation} onChange={e => setVehiculeForm(f => ({ ...f, immatriculation: e.target.value }))}
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
+                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all" />
               </div>
 
               <div>
