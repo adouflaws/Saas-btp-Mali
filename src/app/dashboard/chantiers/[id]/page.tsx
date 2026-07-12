@@ -222,7 +222,7 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
     const { data } = await supabase.from('affectations_chantier')
       .select('id, ouvrier_id, date_debut, ouvriers(nom, prenom, metier)')
       .eq('chantier_id', chantierId)
-      .eq('actif', true)
+      .or('actif.eq.true,actif.is.null')
       .order('date_debut', { ascending: false })
     setEquipe((data ?? []) as unknown as Affectation[])
     setLoadingEquipe(false)
@@ -235,7 +235,7 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
     const { data: profile } = await supabase.from('profiles').select('entreprise_id').eq('id', user.id).single()
     if (!profile?.entreprise_id) return
     const { data: tousOuvriers } = await supabase.from('ouvriers')
-      .select('id, nom, prenom, metier').eq('entreprise_id', profile.entreprise_id).eq('actif', true).order('nom')
+      .select('id, nom, prenom, metier').eq('entreprise_id', profile.entreprise_id).or('actif.eq.true,actif.is.null').order('nom')
     const idsAffectes = new Set(equipe.map(a => a.ouvrier_id))
     setOuvriersDisponibles((tousOuvriers ?? []).filter(o => !idsAffectes.has(o.id)))
     setShowAffecterModal(true)

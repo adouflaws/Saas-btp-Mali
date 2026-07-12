@@ -271,7 +271,7 @@ function DevisPageInner() {
         const [entRes, chRes, ouvrRes, tarifsRes] = await Promise.all([
           supabase.from('entreprises').select('nom, adresse, telephone, email, rccm, nif, logo_url').eq('id', eid).single(),
           supabase.from('chantiers').select('id, nom, client_nom, ville, client_telephone').eq('entreprise_id', eid).order('nom'),
-          supabase.from('ouvriers').select('id, nom, prenom, metier, taux_journalier').eq('actif', true).eq('entreprise_id', eid).order('nom'),
+          supabase.from('ouvriers').select('id, nom, prenom, metier, taux_journalier').or('actif.eq.true,actif.is.null').eq('entreprise_id', eid).order('nom'),
           supabase.from('tarifs_personnalises').select('*').eq('entreprise_id', eid).order('designation'),
         ])
 

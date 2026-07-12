@@ -113,7 +113,7 @@ export default function PointagePage() {
     const ouvriersCache = cacheGet(`ouvriers_${entrepriseId ?? 'unknown'}`)
     let ouvriers = ouvriersCache
     if (!ouvriers || navigator.onLine) {
-      const q = supabase.from('ouvriers').select('id, nom, prenom, metier, taux_journalier').eq('actif', true).order('nom')
+      const q = supabase.from('ouvriers').select('id, nom, prenom, metier, taux_journalier').or('actif.eq.true,actif.is.null').order('nom')
       if (entrepriseId) q.eq('entreprise_id', entrepriseId)
       const { data } = await q
       ouvriers = data ?? []
@@ -124,7 +124,7 @@ export default function PointagePage() {
     let sansEquipeAffectee = false
     if (navigator.onLine) {
       const { data: affectations } = await supabase.from('affectations_chantier')
-        .select('ouvrier_id').eq('chantier_id', chantierId).eq('actif', true)
+        .select('ouvrier_id').eq('chantier_id', chantierId).or('actif.eq.true,actif.is.null')
       if (affectations && affectations.length > 0) {
         const idsAffectes = new Set(affectations.map(a => a.ouvrier_id))
         ouvriers = (ouvriers as { id: string }[]).filter(o => idsAffectes.has(o.id))

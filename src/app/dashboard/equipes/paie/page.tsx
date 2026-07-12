@@ -480,33 +480,46 @@ export default function PaiePage() {
       </div>
 
       {/* Répartition par chantier — consolidation automatique des dépenses */}
-      {!loading && chantierPaies.length > 0 && (
+      {!loading && (
         <div className="bg-[#232323] rounded-2xl border border-white/[0.06] overflow-hidden mt-6">
           <div className="px-5 py-4 border-b border-white/[0.06]">
             <h2 className="text-[14px] font-semibold text-white">Répartition par chantier — {MOIS_LABELS[mois - 1]} {annee}</h2>
             <p className="text-gray-600 text-[11px] mt-0.5">Valider crée automatiquement une dépense "Main d'œuvre" pour le chantier, incluse dans sa rentabilité.</p>
           </div>
-          <div className="divide-y divide-white/[0.04]">
-            {chantierPaies.map(cp => (
-              <div key={cp.chantier_id} className="px-5 py-3.5 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-white text-[13px] font-medium truncate">{cp.nom}</p>
-                  <p className="text-gray-500 text-[12px]">{formatFCFA(cp.total_net)}</p>
-                </div>
-                {cp.valide ? (
-                  <span className="shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center gap-1.5">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><path d="M2 8l4 4 8-8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    Déjà validée
-                  </span>
+          {chantierPaies.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+              <p className="text-white text-[13px] font-medium mb-1">Aucune répartition disponible</p>
+              <p className="text-gray-600 text-[12px]">
+                {lignes.length === 0 ? (
+                  <>Enregistrez des <Link href="/dashboard/equipes/pointage" className="text-orange-400 hover:underline">pointages</Link> liés à un chantier pour ce mois.</>
                 ) : (
-                  <button onClick={() => handleValiderPaie(cp)} disabled={validatingChantier === cp.chantier_id}
-                    className="shrink-0 flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-[12px] font-semibold transition-colors disabled:opacity-60">
-                    {validatingChantier === cp.chantier_id ? <><Spinner/>Validation…</> : 'Valider la paie'}
-                  </button>
+                  "Le net à payer par chantier est nul pour cette période (avances ≥ salaire brut, ou pointages sans chantier)."
                 )}
-              </div>
-            ))}
-          </div>
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-white/[0.04]">
+              {chantierPaies.map(cp => (
+                <div key={cp.chantier_id} className="px-5 py-3.5 flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-white text-[13px] font-medium truncate">{cp.nom}</p>
+                    <p className="text-gray-500 text-[12px]">{formatFCFA(cp.total_net)}</p>
+                  </div>
+                  {cp.valide ? (
+                    <span className="shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center gap-1.5">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><path d="M2 8l4 4 8-8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      Déjà validée
+                    </span>
+                  ) : (
+                    <button onClick={() => handleValiderPaie(cp)} disabled={validatingChantier === cp.chantier_id}
+                      className="shrink-0 flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-[12px] font-semibold transition-colors disabled:opacity-60">
+                      {validatingChantier === cp.chantier_id ? <><Spinner/>Validation…</> : 'Valider la paie'}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

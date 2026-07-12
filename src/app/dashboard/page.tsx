@@ -586,7 +586,7 @@ export default function DashboardPage() {
         supabase.from('chantiers').select('*', { count: 'exact', head: true }).eq('entreprise_id', eid),
         supabase.from('ouvriers').select('*', { count: 'exact', head: true }).eq('entreprise_id', eid),
         supabase.from('factures').select('*', { count: 'exact', head: true }).eq('entreprise_id', eid),
-        supabase.from('ouvriers').select('id').eq('actif', true).eq('entreprise_id', eid),
+        supabase.from('ouvriers').select('id').or('actif.eq.true,actif.is.null').eq('entreprise_id', eid),
         supabase.from('pointages').select('ouvrier_id').eq('date_pointage', todayStr),
         supabase.from('factures').select('montant_ttc, montant_paye').eq('entreprise_id', eid).neq('statut', 'paye').lte('date_emission', sevenDaysAgoStr),
         supabase.from('factures').select('montant_ttc').eq('entreprise_id', eid).gte('date_emission', debutMoisStr),

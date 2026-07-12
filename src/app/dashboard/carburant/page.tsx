@@ -145,7 +145,9 @@ export default function CarburantPage() {
   const hausse    = totalPrev > 0 && totalCur > totalPrev * 1.3
   const haussePct = totalPrev > 0 ? Math.round((totalCur / totalPrev - 1) * 100) : 0
 
-  const vehiculesActifs = vehicules.filter(v => v.actif)
+  // actif !== false (et non === true) : une ligne où la colonne actif est NULL
+  // (ex. import manuel en base) reste considérée active plutôt que de disparaître silencieusement.
+  const vehiculesActifs = vehicules.filter(v => v.actif !== false)
 
   const coutVehicule = vehiculesActifs
     .map(v => ({
@@ -561,13 +563,24 @@ export default function CarburantPage() {
               {/* Véhicule */}
               <div>
                 <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Véhicule *</label>
-                <select required value={pleinForm.vehicule_id} onChange={e => setPleinForm(f => ({ ...f, vehicule_id: e.target.value }))}
-                  className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all">
-                  <option value="">— Sélectionner —</option>
-                  {vehiculesActifs.map(v => (
-                    <option key={v.id} value={v.id}>{v.nom}{v.immatriculation ? ` · ${v.immatriculation}` : ''}</option>
-                  ))}
-                </select>
+                {vehiculesActifs.length === 0 ? (
+                  <p className="text-amber-400 text-[12px]">
+                    Aucun véhicule actif.{' '}
+                    <button type="button"
+                      onClick={() => { setShowPlein(false); setVehiculeForm(DEFAULT_VEHICULE); setVehiculeErr(''); setShowVehicule(true) }}
+                      className="underline hover:text-amber-300 transition-colors">
+                      Ajouter un véhicule
+                    </button>
+                  </p>
+                ) : (
+                  <select required value={pleinForm.vehicule_id} onChange={e => setPleinForm(f => ({ ...f, vehicule_id: e.target.value }))}
+                    className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-all">
+                    <option value="">— Sélectionner —</option>
+                    {vehiculesActifs.map(v => (
+                      <option key={v.id} value={v.id}>{v.nom}{v.immatriculation ? ` · ${v.immatriculation}` : ''}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Chantier */}

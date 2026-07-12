@@ -81,7 +81,7 @@ export default function AvancesPage() {
       }
       const [{ data: ov }, { data: ch }] = await Promise.all([
         supabase.from('ouvriers').select('id, nom, prenom, metier, taux_journalier')
-          .eq('actif', true)
+          .or('actif.eq.true,actif.is.null')
           .eq('entreprise_id', eid ?? '')
           .order('nom'),
         supabase.from('chantiers').select('id, nom')
