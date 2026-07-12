@@ -12,6 +12,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/login') ||
     pathname.startsWith('/auth') ||
     pathname.startsWith('/portail') ||
+    pathname.startsWith('/api/portail') ||
     pathname.startsWith('/tarifs') ||
     pathname.startsWith('/abonnement-expire') ||
     pathname.startsWith('/signature')

@@ -120,89 +120,66 @@ function dateJ7Sent(relances: Relance[]): string {
   return r ? new Date(r.envoye_le).toLocaleDateString('fr-FR') : ''
 }
 
-/* ─────────────────────────── Messages WhatsApp ──────────────── */
+/* ─────────────────────────── Messages WhatsApp / Email ──────── */
 
-function fmtDate(d: string | null): string {
-  return d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR') : ''
+// Format long français ("5 juillet 2026") pour les messages de relance.
+function fmtDateLong(d: string | null): string {
+  return d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
 }
 
+// Aucun champ "civilite" en base pour l'instant : on retombe sur le nom seul,
+// conformément au comportement attendu si le champ n'existe pas.
 function genMessage(niveau: LevelKey, f: Facture, ent: Entreprise): string {
-  const clientNom = getEffectiveNom(f)
-  const ttcStr    = Math.round(f.montant_ttc ?? 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
-  const entNom    = ent.nom || 'BTP Mali'
-  const entTel    = ent.telephone ?? ''
+  const clientNom   = getEffectiveNom(f)
+  const chantierNom = getChantierInfo(f)?.nom ?? ''
+  const ttcStr      = Math.round(f.montant_ttc ?? 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  const entNom      = ent.nom
+  const entTel      = ent.telephone ?? ''
+  const echeance    = fmtDateLong(f.date_echeance)
 
-  if (niveau === 'j7') return [
-    `Bonjour ${clientNom},`,
-    '',
-    `Nous nous permettons de vous rappeler que la facture numero ${f.numero}, d'un montant de ${ttcStr} FCFA, emise le ${fmtDate(f.date_emission)}, est echue depuis 7 jours.`,
-    '',
-    `Nous vous serions reconnaissants de bien vouloir proceder au reglement dans les meilleurs delais.`,
-    '',
-    `Modes de paiement acceptes : Orange Money, Wave, virement bancaire.`,
-    '',
-    `Nous restons a votre disposition pour toute information complementaire.`,
-    '',
-    `Cordialement,`,
-    entNom,
-    entTel,
-  ].filter(Boolean).join('\n')
+  const chantierPhrase = chantierNom ? ` ${chantierNom}` : ''
+  const contactPhrase  = entTel ? ` au ${entTel}` : ''
 
-  if (niveau === 'j15') return [
-    `Bonjour ${clientNom},`,
-    '',
-    `Malgre notre precedent rappel concernant la facture numero ${f.numero}, d'un montant de ${ttcStr} FCFA, celle-ci demeure impayee a ce jour, soit 15 jours apres son echeance.`,
-    '',
-    `Nous vous demandons de proceder au reglement sous 48 heures afin d'eviter toute mesure supplementaire.`,
-    '',
-    `Pour tout arrangement de paiement, nous vous invitons a nous contacter sans delai.`,
-    '',
-    `Dans l'attente de votre retour,`,
-    '',
-    `Cordialement,`,
-    entNom,
-    entTel,
-  ].filter(Boolean).join('\n')
+  if (niveau === 'j7') {
+    return `Bonjour ${clientNom}, nous espérons que vous êtes satisfait de l'avancement de votre chantier${chantierPhrase}. Petit rappel : la facture ${f.numero} de ${ttcStr} FCFA arrivait à échéance le ${echeance}. Si le règlement est déjà en cours, merci d'ignorer ce message. — ${entNom}`
+  }
 
-  return [
-    `Bonjour ${clientNom},`,
-    '',
-    `Nous constatons que la facture numero ${f.numero}, d'un montant de ${ttcStr} FCFA, demeure impayee depuis 30 jours, malgre nos relances successives.`,
-    '',
-    `A defaut de reglement integral sous 72 heures, nous nous verrons contraints d'engager les demarches necessaires au recouvrement de cette creance, incluant l'application des penalites de retard prevues.`,
-    '',
-    `Nous vous invitons a regulariser cette situation dans les delais impartis ou a nous contacter immediatement.`,
-    '',
-    `Cordialement,`,
-    entNom,
-    entTel,
-  ].filter(Boolean).join('\n')
+  if (niveau === 'j15') {
+    return `Bonjour ${clientNom}, sauf erreur de notre part, la facture ${f.numero} (${ttcStr} FCFA, échéance du ${echeance}) demeure impayée à ce jour. Merci de procéder au règlement ou de nous contacter${contactPhrase} pour convenir d'un arrangement. — ${entNom}`
+  }
+
+  return `Bonjour ${clientNom}, malgré nos précédents rappels, la facture ${f.numero} (${ttcStr} FCFA) reste impayée depuis plus de 30 jours. Sans règlement sous 7 jours, nous serons contraints de suspendre les travaux du chantier${chantierPhrase}. Nous restons disponibles${contactPhrase} pour trouver une solution ensemble. — ${entNom}`
 }
 
 /* ─────────────────────── Messages Email ─────────────────────── */
 
 function genEmailSubject(niveau: LevelKey, f: Facture): string {
-  if (niveau === 'j7')  return `Rappel de paiement - Facture ${f.numero}`
-  if (niveau === 'j15') return `Relance - Facture ${f.numero} impayee depuis 15 jours`
-  return `Mise en demeure - Facture ${f.numero}`
+  if (niveau === 'j7')  return `Rappel — Facture ${f.numero}`
+  if (niveau === 'j15') return `Relance — Facture ${f.numero} impayée`
+  return `Urgent — Facture ${f.numero} en retard`
 }
 
+// Même ton et mêmes variables que genMessage() (WhatsApp), adaptés au format email
+// (paragraphes + bloc de signature). Aucun champ "civilite" en base : nom seul.
 function genEmailBody(niveau: LevelKey, f: Facture, ent: Entreprise): string {
-  const clientNom = getEffectiveNom(f)
-  const ttcStr    = Math.round(f.montant_ttc ?? 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
-  const entNom    = ent.nom || 'BTP Mali'
-  const sig       =[entNom, ent.telephone ? `Tel : ${ent.telephone}` : null, ent.email ?? null].filter(Boolean).join('\n')
+  const clientNom   = getEffectiveNom(f)
+  const chantierNom = getChantierInfo(f)?.nom ?? ''
+  const ttcStr      = Math.round(f.montant_ttc ?? 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  const entNom      = ent.nom
+  const echeance    = fmtDateLong(f.date_echeance)
+  const sig         = [entNom, ent.telephone ? `Tel : ${ent.telephone}` : null, ent.email ?? null].filter(Boolean).join('\n')
+
+  const chantierPhrase = chantierNom ? ` ${chantierNom}` : ''
+  const contactPhrase  = ent.telephone ? ` au ${ent.telephone}` : ''
 
   if (niveau === 'j7') return [
     `Bonjour ${clientNom},`,
     '',
-    `Nous nous permettons de vous rappeler que la facture ${f.numero}, d'un montant de ${ttcStr} FCFA, emise le ${fmtDate(f.date_emission)}, est echue depuis 7 jours.`,
+    `Nous espérons que vous êtes satisfait de l'avancement de votre chantier${chantierPhrase}.`,
     '',
-    `Nous vous serions reconnaissants de bien vouloir proceder au reglement dans les meilleurs delais.`,
+    `Petit rappel : la facture ${f.numero}, d'un montant de ${ttcStr} FCFA, arrivait à échéance le ${echeance}.`,
     '',
-    `Modes de paiement acceptes : Orange Money, Wave, virement bancaire.`,
-    '',
-    `Nous restons a votre disposition pour toute information complementaire.`,
+    `Si le règlement est déjà en cours, merci d'ignorer ce message.`,
     '',
     `Cordialement,`,
     sig,
@@ -211,28 +188,22 @@ function genEmailBody(niveau: LevelKey, f: Facture, ent: Entreprise): string {
   if (niveau === 'j15') return [
     `Bonjour ${clientNom},`,
     '',
-    `Malgre notre precedent rappel concernant la facture ${f.numero}, d'un montant de ${ttcStr} FCFA, celle-ci demeure impayee a ce jour, soit 15 jours apres son echeance.`,
+    `Sauf erreur de notre part, la facture ${f.numero} (${ttcStr} FCFA, échéance du ${echeance}) demeure impayée à ce jour.`,
     '',
-    `Nous vous demandons de proceder au reglement sous 48 heures afin d'eviter toute mesure supplementaire.`,
-    '',
-    `Pour tout arrangement de paiement, nous vous invitons a nous contacter sans delai.`,
-    '',
-    `Dans l'attente de votre retour,`,
+    `Merci de procéder au règlement ou de nous contacter${contactPhrase} pour convenir d'un arrangement.`,
     '',
     `Cordialement,`,
     sig,
   ].join('\n')
 
   return [
-    `Mise en demeure`,
-    '',
     `Bonjour ${clientNom},`,
     '',
-    `Nous constatons que la facture ${f.numero}, d'un montant de ${ttcStr} FCFA, demeure impayee depuis 30 jours, malgre nos relances successives.`,
+    `Malgré nos précédents rappels, la facture ${f.numero} (${ttcStr} FCFA) reste impayée depuis plus de 30 jours.`,
     '',
-    `A defaut de reglement integral sous 72 heures, nous nous verrons contraints d'engager les demarches necessaires au recouvrement de cette creance, incluant l'application des penalites de retard prevues.`,
+    `Sans règlement sous 7 jours, nous serons contraints de suspendre les travaux du chantier${chantierPhrase}.`,
     '',
-    `Nous vous invitons a regulariser cette situation dans les delais impartis ou a nous contacter immediatement.`,
+    `Nous restons disponibles${contactPhrase} pour trouver une solution ensemble.`,
     '',
     `Cordialement,`,
     sig,

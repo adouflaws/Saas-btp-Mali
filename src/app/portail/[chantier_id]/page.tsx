@@ -1,5 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import PhotoModal from './PhotoModal'
 import StatusBadge, { statutBarClass } from '@/components/StatusBadge'
 
@@ -15,6 +15,21 @@ type Entreprise = { nom: string | null; telephone: string | null }
 type Jalon  = { id: string; nom: string; date_prevue: string; date_reelle: string | null; atteint: boolean | null }
 type Photo  = { id: string; url: string; nom: string | null; legende: string | null; prise_le: string }
 
+type ProchaineEcheance = {
+  numero: string
+  montant: number
+  date_echeance: string | null
+  en_retard: boolean
+  jours_retard: number
+}
+type Finance = {
+  hasData: boolean
+  montant_total?: number
+  deja_paye?: number
+  reste_a_payer?: number
+  prochaine_echeance?: ProchaineEcheance | null
+}
+
 /* ─── Helpers ───────────────────────────────────────── */
 
 function daysRemaining(dateStr: string | null): number | null {
@@ -24,6 +39,14 @@ function daysRemaining(dateStr: string | null): number | null {
 
 function fmtDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+// Espace normale (U+0020) comme séparateur de milliers — toLocaleString('fr-FR')
+// utilise une espace fine insécable (U+202F) qui pose problème à l'affichage.
+function fcfaEspace(v: number): string {
+  const n = Math.round(v)
+  const digits = Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  return `${n < 0 ? '-' : ''}${digits} FCFA`
 }
 
 function relativeTime(dateStr: string): string {
@@ -93,17 +116,26 @@ export default async function PortailPage({ params }: { params: Promise<{ chanti
 
   const c = chantier as Chantier
 
-  const [{ data: jalonsRaw }, { data: photosRaw }, entrepriseResult] = await Promise.all([
+  const hdrs = await headers()
+  const host = hdrs.get('host') ?? 'localhost:3000'
+  const protocol = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https'
+  const baseUrl = `${protocol}://${host}`
+
+  const [{ data: jalonsRaw }, { data: photosRaw }, entrepriseResult, financeResult] = await Promise.all([
     supabase.from('jalons').select('id, nom, date_prevue, date_reelle, atteint').eq('chantier_id', chantier_id).order('date_prevue'),
     supabase.from('photos_chantier').select('*').eq('chantier_id', chantier_id).order('prise_le', { ascending: false }),
     c.entreprise_id
       ? supabase.from('entreprises').select('nom, telephone').eq('id', c.entreprise_id).single()
       : Promise.resolve({ data: null, error: null }),
+    fetch(`${baseUrl}/api/portail/finance?chantier_id=${chantier_id}`, { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : { hasData: false }))
+      .catch(() => ({ hasData: false })) as Promise<Finance>,
   ])
 
   const jalons      = (jalonsRaw ?? []) as Jalon[]
   const photos      = (photosRaw ?? []) as Photo[]
   const entreprise  = entrepriseResult.data as Entreprise | null
+  const finance     = financeResult as Finance
 
   const avancement      = c.avancement ?? 0
   const joursRestants   = daysRemaining(c.date_fin_prevue)
@@ -115,6 +147,9 @@ export default async function PortailPage({ params }: { params: Promise<{ chanti
     ? `https://wa.me/${whatsappTel}?text=${encodeURIComponent(`Bonjour, j'ai une question concernant mon chantier "${c.nom}".`)}`
     : null
   const lastPhoto       = photos[0] ?? null
+  const pctPaye         = finance.hasData && (finance.montant_total ?? 0) > 0
+    ? Math.min(100, Math.max(0, Math.round(((finance.deja_paye ?? 0) / (finance.montant_total ?? 1)) * 100)))
+    : 0
 
   const stats = [
     { label: 'Jalons terminés', value: jalonsAtteints,  sub: jalons.length > 0 ? `sur ${jalons.length}` : null },
@@ -229,6 +264,67 @@ export default async function PortailPage({ params }: { params: Promise<{ chanti
             )}
           </div>
         </section>
+
+        {/* ── SITUATION FINANCIÈRE ── */}
+        {finance.hasData && (
+          <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <h2 className="text-[#1C1C1C] text-[14px] font-bold mb-4">Situation financière</h2>
+
+            {/* Barre de progression des paiements */}
+            <div className="mb-5">
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-orange-500 rounded-full transition-all"
+                  style={{ width: `${pctPaye}%` }}
+                />
+              </div>
+              <p className="text-[#6B7280] text-[11px] mt-1.5">{pctPaye}% du montant total réglé</p>
+            </div>
+
+            {/* 3 colonnes — stack mobile */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <p className="text-[#6B7280] text-[11px] font-medium mb-0.5">Montant total</p>
+                <p className="text-[#1C1C1C] text-[15px] font-bold">{fcfaEspace(finance.montant_total ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-[#6B7280] text-[11px] font-medium mb-0.5">Déjà payé</p>
+                <p className="text-emerald-600 text-[15px] font-bold">{fcfaEspace(finance.deja_paye ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-[#6B7280] text-[11px] font-medium mb-0.5">Reste à payer</p>
+                <p className="text-orange-600 text-[15px] font-bold">{fcfaEspace(finance.reste_a_payer ?? 0)}</p>
+              </div>
+            </div>
+
+            {/* Prochaine échéance */}
+            {finance.prochaine_echeance && (
+              <div className={`flex items-start gap-2.5 mt-4 pt-4 border-t border-gray-100 ${finance.prochaine_echeance.en_retard ? 'text-red-600' : 'text-[#1C1C1C]'}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 shrink-0 mt-0.5">
+                  {finance.prochaine_echeance.en_retard ? (
+                    <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round" />
+                  ) : (
+                    <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" strokeLinecap="round" strokeLinejoin="round" /></>
+                  )}
+                </svg>
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold">
+                    {finance.prochaine_echeance.en_retard ? 'Facture en retard' : 'Facture en attente'} : {finance.prochaine_echeance.numero}
+                  </p>
+                  <p className={`text-[12px] mt-0.5 ${finance.prochaine_echeance.en_retard ? 'text-red-500' : 'text-[#6B7280]'}`}>
+                    {fcfaEspace(finance.prochaine_echeance.montant)}
+                    {finance.prochaine_echeance.date_echeance && ` · Échéance : ${fmtDate(finance.prochaine_echeance.date_echeance)}`}
+                  </p>
+                  {finance.prochaine_echeance.en_retard && (
+                    <p className="text-[11px] font-semibold text-red-600 mt-1">
+                      En retard de {finance.prochaine_echeance.jours_retard} jour{finance.prochaine_echeance.jours_retard > 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* ── STATS 2x2 ── */}
         <div className="grid grid-cols-2 gap-3">
