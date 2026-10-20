@@ -177,13 +177,16 @@ async function main() {
       email: EMAIL,
       password: PASSWORD,
       email_confirm: true,
-      user_metadata: { nom: 'Coulibaly', entreprise: NOM_ENTREPRISE, telephone: TELEPHONE },
+      user_metadata: { nom: 'Coulibaly', full_name: 'Amadou Coulibaly', entreprise: NOM_ENTREPRISE, telephone: TELEPHONE },
     })
     if (error) throw error
     user = data.user
     console.log('✓ Compte créé')
   } else {
-    const { error } = await sb.auth.admin.updateUserById(user.id, { password: PASSWORD })
+    const { error } = await sb.auth.admin.updateUserById(user.id, {
+      password: PASSWORD,
+      user_metadata: { ...user.user_metadata, full_name: 'Amadou Coulibaly' }, // salutation du tableau de bord
+    })
     if (error) throw error
     console.log('✓ Compte existant, mot de passe mis à jour')
   }
@@ -236,7 +239,11 @@ async function main() {
     { key: 'magasin', nom: 'Magasin de stockage — Halle de Bamako', description: 'Hangar métallique 600 m² sur dallage', client_nom: 'Ets Diarra & Frères', client_telephone: '+223 76 18 52 03', adresse: 'Halle de Bamako, Commune VI', ville: 'Bamako', statut: 'termine', date_debut: day(-260), date_fin_prevue: day(-60), date_fin_reelle: day(-52), budget_prevu: 32_000_000, avancement: 100, portail_actif: false },
     { key: 'duplex', nom: 'Duplex — Sotuba', description: 'Duplex 4 chambres, en attente de validation du devis', client_nom: 'Aïssata Keïta', client_telephone: '+223 79 05 33 61', adresse: 'Sotuba ACI', ville: 'Bamako', statut: 'preparation', date_debut: day(30), date_fin_prevue: day(300), budget_prevu: 61_000_000, avancement: 0, portail_actif: false },
   ]
-  const chantierRows = await insert('chantiers', CH.map(({ key, ...c }) => ({ ...c, entreprise_id: eid, marche_public: c.marche_public ?? false })))
+  // created_at aligné sur le début réel du chantier, sinon le fil « Activité récente » affiche « créé il y a 2 min »
+  const chantierRows = await insert('chantiers', CH.map(({ key, ...c }) => ({
+    ...c, entreprise_id: eid, marche_public: c.marche_public ?? false,
+    created_at: new Date(`${c.date_debut < day(0) ? c.date_debut : day(-3)}T09:00:00`).toISOString(),
+  })))
   const C = Object.fromEntries(CH.map((c, i) => [c.key, chantierRows[i]]))
   console.log(`✓ ${chantierRows.length} chantiers`)
 
@@ -270,10 +277,11 @@ async function main() {
     entreprise_id: eid, chantier_id: C[o.chantier].id, ouvrier_id: o.id, date_debut: C[o.chantier].date_debut, actif: true,
   })))
 
-  /* 4. Pointages : 50 derniers jours ouvrés (lundi-samedi).
+  /* 4. Pointages : du 1er du mois précédent à aujourd'hui (lundi-samedi). Le mois précédent est
+        validé plus bas ; commencer plus tôt ferait apparaître une alerte « paie non validée ».
         Aujourd'hui, la Villa reste VIDE exprès : c'est le pointage à faire en direct pendant la démo. */
   const pointages = []
-  const debutPointage = -50
+  const debutPointage = -Math.round((TODAY - new Date(TODAY.getFullYear(), TODAY.getMonth() - 1, 1, 12)) / 86_400_000)
   for (let off = debutPointage; off <= 0; off++) {
     const d = new Date(TODAY); d.setDate(d.getDate() + off)
     if (d.getDay() === 0) continue
@@ -336,6 +344,11 @@ async function main() {
   D('immeuble', 'materiel', 'Location pompe à béton', 'Béton Express Mali', 1_300_000, -61)
   D('immeuble', 'sous_traitance', 'Terrassement et évacuation des déblais', 'TP Sahel', 6_800_000, -142)
   D('immeuble', 'autre', 'Gardiennage + éclairage chantier — 5 mois', 'Sécurité Plus', 1_250_000, -10)
+  // … et ce qui fait basculer le chantier dans le rouge : plus dépensé que facturé
+  D('immeuble', 'materiaux', 'Béton prêt à l\'emploi — dalle R+1 (138 m³)', 'Béton Express Mali', 13_110_000, -20)
+  D('immeuble', 'materiaux', 'Fer à béton — poteaux R+2 (commande anticipée, prix en hausse)', 'Sonatam', 8_950_000, -8)
+  D('immeuble', 'sous_traitance', 'Reprise malfaçon poteaux R+1 (démolition + recoulage)', 'TP Sahel', 6_400_000, -13)
+  D('immeuble', 'materiel', 'Location grue mobile — prolongation 2 semaines', 'Loc-Engins Bamako', 4_200_000, -15)
   // École — marché public serré
   D('ecole', 'main_oeuvre', "Main d'œuvre fouilles et semelles (avant mise en place du logiciel)", null, 1_480_000, -55)
   D('ecole', 'materiaux', 'Agglos 20 pleins — 5 200 unités', 'Briqueterie de Kalaban', 2_860_000, -64)
@@ -431,16 +444,16 @@ async function main() {
 
   /* 11. Devis + lignes */
   const DEVIS = [
-    { n: 1, ch: 'magasin', statut: 'converti', off: -265, lignes: [
+    { n: 1, ch: 'magasin', statut: 'accepte', off: -265, lignes: [
       ['Terrassement et fondations', 'forfait', 1, 3_900_000, 'gros_oeuvre'], ['Dallage béton armé 600 m²', 'm²', 600, 11_000, 'gros_oeuvre'],
       ['Charpente et bardage métallique', 'forfait', 1, 15_200_000, 'charpente'], ['Électricité industrielle', 'forfait', 1, 3_100_000, 'second_oeuvre']] },
-    { n: 2, ch: 'villa', statut: 'converti', off: -125, lignes: [
+    { n: 2, ch: 'villa', statut: 'accepte', off: -125, lignes: [
       ['Fondations et soubassement', 'forfait', 1, 9_800_000, 'gros_oeuvre'], ['Élévation RDC + R+1 (agglos 15)', 'm²', 760, 9_500, 'gros_oeuvre'],
       ['Planchers hourdis RDC et R+1', 'm²', 290, 38_000, 'gros_oeuvre'], ['Enduits intérieurs et extérieurs', 'm²', 1_480, 3_500, 'second_oeuvre'],
       ['Carrelage grès 40×40 posé', 'm²', 260, 14_500, 'second_oeuvre'], ['Électricité complète', 'forfait', 1, 4_200_000, 'second_oeuvre'],
       ['Plomberie et sanitaires', 'forfait', 1, 3_900_000, 'second_oeuvre'], ['Menuiseries alu et bois', 'forfait', 1, 6_100_000, 'second_oeuvre'],
       ['Peinture 2 couches', 'm²', 1_480, 2_800, 'finitions'], ['Étanchéité terrasse', 'm²', 145, 12_500, 'finitions']] },
-    { n: 3, ch: 'immeuble', statut: 'converti', off: -160, lignes: [
+    { n: 3, ch: 'immeuble', statut: 'accepte', off: -160, lignes: [
       ['Terrassement et fondations profondes', 'forfait', 1, 38_000_000, 'gros_oeuvre'], ['Structure béton armé R+3', 'm³', 820, 95_000, 'gros_oeuvre'],
       ['Maçonnerie', 'm²', 2_600, 9_500, 'gros_oeuvre'], ['Second œuvre (électricité, plomberie, climatisation)', 'forfait', 1, 46_000_000, 'second_oeuvre'],
       ['Façade et finitions', 'forfait', 1, 21_500_000, 'finitions']] },
@@ -464,24 +477,27 @@ async function main() {
     const ch = d.ch ? C[d.ch] : null
     const row = await insert('devis', {
       entreprise_id: eid, chantier_id: ch?.id ?? null, numero: `DEV-${pad(d.n).padStart(3, '0')}`, statut: d.statut,
-      montant_ht: ht, tva_taux: 18, montant_tva: tva(ht), montant_ttc: ht + tva(ht),
+      montant_ht: ht, tva_taux: 18, // montant_tva et montant_ttc sont calculés par la base
       date_emission: day(d.off), date_validite: day(d.off + 30), notes: 'Validité 30 jours. Acompte de 30 % à la commande.',
       cree_par: user.id, created_at: iso(d.off),
       client_nom: ch?.client_nom ?? d.client[0], client_telephone: ch?.client_telephone ?? d.client[1],
       signe_par: d.signe?.par ?? null, date_signature: d.signe ? iso(d.signe.off) : null,
     })
     await insert('lignes_devis', d.lignes.map(([designation, unite, quantite, prix_unit, categorie], i) => ({
-      devis_id: row.id, designation, unite, quantite, prix_unit, total: Math.round(quantite * prix_unit), ordre: i, categorie,
+      devis_id: row.id, designation, unite, quantite, prix_unit, ordre: i, // total calculé par la base
+      categorie: ['second_oeuvre', 'finitions'].includes(categorie) ? 'main_oeuvre' : 'materiaux',
     })))
     devisRows[d.n] = row
   }
   console.log(`✓ ${DEVIS.length} devis (dont 1 signé cette semaine, 1 sans réponse depuis 19 jours)`)
 
   /* 12. Budget prévisionnel (comparé aux dépenses réelles dans la fiche chantier) */
+  // La fiche chantier compare 4 postes : materiaux, main_oeuvre, transport, divers
+  // (divers = matériel, sous-traitance et autres dépenses).
   const BP = {
-    villa: [['materiaux', 38_000_000], ['main_oeuvre', 21_000_000], ['materiel', 2_500_000], ['transport', 1_800_000], ['sous_traitance', 6_500_000], ['autre', 1_500_000]],
-    immeuble: [['materiaux', 112_000_000], ['main_oeuvre', 58_000_000], ['materiel', 14_000_000], ['transport', 4_000_000], ['sous_traitance', 22_000_000], ['autre', 4_000_000]],
-    ecole: [['materiaux', 7_200_000], ['main_oeuvre', 4_100_000], ['sous_traitance', 4_900_000], ['transport', 600_000]],
+    villa: [['materiaux', 38_000_000], ['main_oeuvre', 21_000_000], ['transport', 1_800_000], ['divers', 10_500_000]],
+    immeuble: [['materiaux', 112_000_000], ['main_oeuvre', 58_000_000], ['transport', 4_000_000], ['divers', 40_000_000]],
+    ecole: [['materiaux', 7_200_000], ['main_oeuvre', 4_100_000], ['transport', 600_000], ['divers', 4_900_000]],
   }
   await insert('budget_previsionnel', Object.entries(BP).flatMap(([k, rows]) => rows.map(([categorie, montant_prevu]) => ({
     entreprise_id: eid, chantier_id: C[k].id, categorie, montant_prevu, description: 'Budget initial validé',
