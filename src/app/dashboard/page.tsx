@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import OnboardingChecklist from '@/components/OnboardingChecklist'
@@ -9,16 +9,16 @@ import PageSkeleton from '@/components/PageSkeleton'
 
 function WelcomeToast() {
   const searchParams = useSearchParams()
-  const router = useRouter()
-  const [show, setShow] = useState(false)
+  // Lu une fois dans l'URL au montage (?welcome=1 après l'inscription)
+  const [show, setShow] = useState(() => searchParams.get('welcome') === '1')
 
   useEffect(() => {
-    if (searchParams.get('welcome') === '1') {
-      setShow(true)
-      router.replace('/dashboard', { scroll: false })
-      setTimeout(() => setShow(false), 5000)
-    }
-  }, [searchParams, router])
+    if (!show) return
+    // API History native (intégrée au routeur Next) : router.replace laissait ?welcome=1 dans l'URL
+    window.history.replaceState(null, '', '/dashboard')
+    const timer = setTimeout(() => setShow(false), 5000)
+    return () => clearTimeout(timer)
+  }, [show])
 
   if (!show) return null
   return (
@@ -351,7 +351,7 @@ function NormalDashboard({ stats, nom, alertes }: { stats: Stats; nom: string; a
             <circle cx="8" cy="8" r="6"/>
             <path d="M8 5v3.5l2.5 1.5"/>
           </svg>
-          Pointer aujourd'hui
+          Pointer aujourd’hui
         </Link>
         <Link
           href="/dashboard/devis"
@@ -371,7 +371,7 @@ function NormalDashboard({ stats, nom, alertes }: { stats: Stats; nom: string; a
           className="opacity-0"
           style={{ animation: 'slide-up-fade 0.28s cubic-bezier(0.23,1,0.32,1) 360ms forwards' }}
         >
-          <h2 className="text-[11px] font-semibold text-gray-600 uppercase tracking-[0.08em] mb-3">À faire aujourd'hui</h2>
+          <h2 className="text-[11px] font-semibold text-gray-600 uppercase tracking-[0.08em] mb-3">À faire aujourd’hui</h2>
           <div className="space-y-2">
             {todoItems.slice(0, 4).map((item, i) => (
               <Link

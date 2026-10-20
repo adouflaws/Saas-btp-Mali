@@ -109,7 +109,13 @@ export default function RentabilitePage({ params }: { params: Promise<{ id: stri
   }, [chantierId])
 
   useEffect(() => {
-    setLoading(true); fetchData().finally(() => setLoading(false))
+    // Chargement initial (loading vaut déjà true) ; ignoré si la page est quittée entre-temps
+    let actif = true
+    async function charger() {
+      try { await fetchData() } finally { if (actif) setLoading(false) }
+    }
+    charger()
+    return () => { actif = false }
   }, [fetchData])
 
   if (loading) return (

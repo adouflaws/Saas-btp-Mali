@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { cacheGet, cacheSet, queueAdd, queueCount, syncQueue as syncQueueShared } from '@/lib/offline'
 import { useActionGuard } from '@/hooks/useActionGuard'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
+import { useQueueCount } from '@/hooks/useQueueCount'
 
 const supabase = createClient()
 
@@ -56,25 +58,18 @@ export default function PointagePage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [isOnline, setIsOnline] = useState(true)
-  const [pendingCount, setPendingCount] = useState(0)
+  const isOnline = useOnlineStatus()
+  const pendingCount = useQueueCount()
   const [syncing, setSyncing] = useState(false)
   const [equipeNonAffectee, setEquipeNonAffectee] = useState(false)
   const prevChantierDate = useRef('')
 
+  // Synchronisation au retour du réseau (état réseau et compteur : hooks ci-dessus)
   useEffect(() => {
-    setIsOnline(navigator.onLine)
-    const onOnline = () => { setIsOnline(true); syncQueue() }
-    const onOffline = () => setIsOnline(false)
-    const onQueue = () => setPendingCount(queueCount())
+    const onOnline = () => { syncQueue() }
     window.addEventListener('online', onOnline)
-    window.addEventListener('offline', onOffline)
-    window.addEventListener('btp-queue-change', onQueue)
-    return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); window.removeEventListener('btp-queue-change', onQueue) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => window.removeEventListener('online', onOnline)
   }, [])
-
-  useEffect(() => { setPendingCount(queueCount()) }, [])
 
   // Récupérer l'entreprise_id du user connecté
   useEffect(() => {
@@ -138,7 +133,7 @@ export default function PointagePage() {
 
     type OuvrierRow = { id: string; nom: string; prenom: string | null; metier: string | null; taux_journalier: number | null }
     type ExistingRow = { id: string; present: boolean; montant_jour: number; note: string; statut_presence: string | null }
-    let existing: Record<string, ExistingRow> = {}
+    const existing: Record<string, ExistingRow> = {}
 
     if (navigator.onLine) {
       const { data: pts } = await supabase.from('pointages').select('id, ouvrier_id, present, montant_jour, note, statut_presence').eq('chantier_id', chantierId).eq('date_pointage', date)
@@ -198,7 +193,6 @@ export default function PointagePage() {
     if (queueCount() === 0) return
     setSyncing(true)
     await syncQueueShared(supabase)
-    setPendingCount(queueCount())
     setSyncing(false)
   }
 
@@ -221,7 +215,6 @@ export default function PointagePage() {
     } else {
       for (const item of payload) queueAdd({ table: 'pointages', op: 'insert', data: item as Record<string, unknown> })
       cacheSet(`pointages_${chantierId}_${date}`, payload)
-      setPendingCount(queueCount())
       setSuccess('Sauvegardé hors ligne. Sera synchronisé à la reconnexion.')
       setTimeout(() => setSuccess(''), 4000)
     }

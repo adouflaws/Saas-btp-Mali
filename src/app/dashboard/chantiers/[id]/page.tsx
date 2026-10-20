@@ -279,7 +279,13 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
   }
 
   useEffect(() => {
-    setLoading(true); fetchData().finally(() => setLoading(false))
+    // Chargement initial (loading vaut déjà true) ; ignoré si la page est quittée entre-temps
+    let actif = true
+    async function charger() {
+      try { await fetchData() } finally { if (actif) setLoading(false) }
+    }
+    charger()
+    return () => { actif = false }
   }, [fetchData])
 
   /* ── Handlers ── */
@@ -584,7 +590,7 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
                   </svg>
                   Partager avec le client
                 </h2>
-                <p className="text-gray-600 text-[12px] mt-0.5">Le client peut suivre l'avancement en temps réel</p>
+                <p className="text-gray-600 text-[12px] mt-0.5">Le client peut suivre l’avancement en temps réel</p>
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-[11px] font-medium ${portailActif ? 'text-emerald-400' : 'text-gray-600'}`}>

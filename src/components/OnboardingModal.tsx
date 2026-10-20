@@ -51,7 +51,7 @@ export default function OnboardingModal() {
           Bienvenue sur BTP Mali
         </h2>
         <p className="text-gray-400 text-[14px] leading-relaxed mb-8">
-          Configurons votre espace en 5 minutes pour que vous puissiez gérer vos chantiers dès aujourd'hui.
+          Configurons votre espace en 5 minutes pour que vous puissiez gérer vos chantiers dès aujourd’hui.
         </p>
 
         <div className="flex flex-col gap-3">

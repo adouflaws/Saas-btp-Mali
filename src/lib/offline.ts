@@ -33,12 +33,19 @@ function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2)
 }
 
+// Prévient les composants abonnés (useQueueCount) qu'une action a été ajoutée/retirée
+export const QUEUE_EVENT = 'btp-queue-change'
+function notifyQueueChange(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(QUEUE_EVENT))
+}
+
 export function queueAdd(action: Omit<QueuedAction, 'id' | 'timestamp'>): void {
   try {
     const q = queueGet()
     q.push({ ...action, id: genId(), timestamp: new Date().toISOString() })
     localStorage.setItem('btp_queue', JSON.stringify(q))
   } catch {}
+  notifyQueueChange()
 }
 
 export function queueGet(): QueuedAction[] {
@@ -51,6 +58,7 @@ export function queueGet(): QueuedAction[] {
 
 export function queueClear(): void {
   try { localStorage.removeItem('btp_queue') } catch {}
+  notifyQueueChange()
 }
 
 export function queueCount(): number {
@@ -104,6 +112,6 @@ async function runSync(supabase: SupabaseClient): Promise<SyncResult> {
     if (remaining.length) localStorage.setItem('btp_queue', JSON.stringify(remaining))
     else localStorage.removeItem('btp_queue')
   } catch {}
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('btp-queue-change'))
+  notifyQueueChange()
   return { ok: done.size, errors, remaining: remaining.length }
 }

@@ -242,7 +242,7 @@ export default function LandingPage() {
           <div data-reveal className="mb-12 sm:mb-14">
             <p className="text-[11px] font-semibold text-orange-400 uppercase tracking-[0.1em] mb-3">Témoignages</p>
             <h2 className="text-[1.9rem] sm:text-5xl font-black text-white tracking-[-0.035em] leading-tight max-w-2xl">
-              Ce qu'en disent les patrons maliens.
+              Ce qu’en disent les patrons maliens.
             </h2>
           </div>
 

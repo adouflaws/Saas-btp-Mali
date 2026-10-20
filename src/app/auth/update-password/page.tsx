@@ -16,7 +16,10 @@ export default function UpdatePasswordPage() {
 
   useEffect(() => {
     const supabase = createClient()
-    let timer: ReturnType<typeof setTimeout>
+    // Après 4s sans session → lien expiré (annulé dès qu'une session est détectée)
+    const timer = setTimeout(() => {
+      setExpired(true)
+    }, 4000)
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
@@ -33,11 +36,6 @@ export default function UpdatePasswordPage() {
         setReady(true)
       }
     })
-
-    // Après 4s sans session → lien expiré
-    timer = setTimeout(() => {
-      setExpired(true)
-    }, 4000)
 
     return () => {
       subscription.unsubscribe()

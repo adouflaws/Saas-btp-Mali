@@ -139,31 +139,36 @@ function FacturesPageInner() {
     init()
   }, [fetchFactures])
 
-  useEffect(() => {
-    if (!paiementTarget) return
-    setMontantPaiement(String((paiementTarget.montant_ttc ?? 0) - (paiementTarget.montant_paye ?? 0)))
-    setModePaiement('wave')
-  }, [paiementTarget])
-
-  useEffect(() => {
-    if (!editTarget) return
-    setEditDateEcheance(editTarget.date_echeance ?? '')
-    setEditMode(editTarget.mode_paiement ?? '')
-    setEditNotes(editTarget.notes ?? '')
-    setEditStatut(editTarget.statut ?? 'en_attente')
-  }, [editTarget])
-
-  useEffect(() => {
-    if (!editTarget || !editDateEcheance) return
+  // Statut proposé selon l'échéance : en retard si dépassée, sinon on sort de « en retard »
+  function statutSelonEcheance(prev: string, echeance: string | null): string {
+    if (!echeance || prev === 'paye') return prev
     const today = new Date(); today.setHours(0, 0, 0, 0)
-    const ech = new Date(editDateEcheance); ech.setHours(0, 0, 0, 0)
-    setEditStatut(prev => {
-      if (prev === 'paye') return prev
-      if (ech < today) return 'en_retard'
-      if (prev === 'en_retard') return 'en_attente'
-      return prev
-    })
-  }, [editDateEcheance, editTarget])
+    const ech = new Date(echeance); ech.setHours(0, 0, 0, 0)
+    if (ech < today) return 'en_retard'
+    if (prev === 'en_retard') return 'en_attente'
+    return prev
+  }
+
+  // Formulaires pré-remplis à l'ouverture (et non par des effets qui recopient l'état)
+  function openPaiement(f: Facture) {
+    setPaiementTarget(f)
+    setMontantPaiement(String((f.montant_ttc ?? 0) - (f.montant_paye ?? 0)))
+    setModePaiement('wave')
+    setPaiementError('')
+  }
+
+  function openEdit(f: Facture) {
+    setEditTarget(f)
+    setEditDateEcheance(f.date_echeance ?? '')
+    setEditMode(f.mode_paiement ?? '')
+    setEditNotes(f.notes ?? '')
+    setEditStatut(statutSelonEcheance(f.statut ?? 'en_attente', f.date_echeance))
+  }
+
+  function changeEcheance(value: string) {
+    setEditDateEcheance(value)
+    setEditStatut(prev => statutSelonEcheance(prev, value))
+  }
 
   function openTelModal(f: Facture) {
     setTelTarget(f)
@@ -468,13 +473,13 @@ function FacturesPageInner() {
                   <div className="mt-2.5 ml-12 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {f.statut !== 'paye' && (
-                        <button onClick={() => setPaiementTarget(f)}
+                        <button onClick={() => openPaiement(f)}
                           className="flex items-center gap-1.5 px-2.5 py-1.5 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-medium transition-colors">
                           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3"><path d="M2 8l5 5L14 3" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           Paiement
                         </button>
                       )}
-                      <button onClick={() => setEditTarget(f)}
+                      <button onClick={() => openEdit(f)}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-[11px] font-medium transition-colors">
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3">
                           <path d="M11.333 2a1.886 1.886 0 112.667 2.667L5.167 13.5 2 14l.5-3.167L11.333 2z" strokeLinecap="round" strokeLinejoin="round"/>
@@ -605,7 +610,7 @@ function FacturesPageInner() {
             <div className="space-y-4">
               <div>
                 <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Date d&apos;échéance</label>
-                <input type="date" value={editDateEcheance} onChange={e => setEditDateEcheance(e.target.value)}
+                <input type="date" value={editDateEcheance} onChange={e => changeEcheance(e.target.value)}
                   className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all [color-scheme:dark]" />
                 {editDateEcheance && (() => {
                   const t = new Date(); t.setHours(0,0,0,0)

@@ -60,8 +60,9 @@ export default function AdminClientsPage() {
   const [deleting, setDeleting]         = useState(false)
 
   /* ── Load ── */
+  // Premier chargement : loading vaut déjà true ; les rechargements après une
+  // action se font sans réafficher l'écran de chargement
   const load = useCallback(async () => {
-    setLoading(true)
     try {
       const res = await fetch('/api/admin/clients')
       const { clients: data, error } = await res.json()

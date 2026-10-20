@@ -212,7 +212,7 @@ export default function OnboardingPage() {
               <div className="space-y-4">
                 <div>
                   <label className={LABEL}>
-                    Nom de l'entreprise <span className="text-orange-400 normal-case font-normal">*</span>
+                    Nom de l’entreprise <span className="text-orange-400 normal-case font-normal">*</span>
                   </label>
                   <input
                     className={INPUT}
@@ -233,7 +233,7 @@ export default function OnboardingPage() {
                   </div>
                 </div>
                 <div>
-                  <label className={LABEL}>Type d'activité</label>
+                  <label className={LABEL}>Type d’activité</label>
                   <div className="grid grid-cols-2 gap-2">
                     {TYPES_ACTIVITE.map(t => (
                       <button
@@ -276,7 +276,7 @@ export default function OnboardingPage() {
                 Premier chantier
               </h1>
               <p className="text-gray-500 text-[13px] leading-relaxed mb-6">
-                Quel chantier gérez-vous en ce moment ? Vous pourrez en ajouter d'autres ensuite.
+                Quel chantier gérez-vous en ce moment ? Vous pourrez en ajouter d’autres ensuite.
               </p>
 
               <div className="space-y-4">

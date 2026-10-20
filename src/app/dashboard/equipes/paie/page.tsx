@@ -484,7 +484,7 @@ export default function PaiePage() {
         <div className="bg-[#232323] rounded-2xl border border-white/[0.06] overflow-hidden mt-6">
           <div className="px-5 py-4 border-b border-white/[0.06]">
             <h2 className="text-[14px] font-semibold text-white">Répartition par chantier — {MOIS_LABELS[mois - 1]} {annee}</h2>
-            <p className="text-gray-600 text-[11px] mt-0.5">Valider crée automatiquement une dépense "Main d'œuvre" pour le chantier, incluse dans sa rentabilité.</p>
+            <p className="text-gray-600 text-[11px] mt-0.5">Valider crée automatiquement une dépense « Main d’œuvre » pour le chantier, incluse dans sa rentabilité.</p>
           </div>
           {chantierPaies.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center px-4">
