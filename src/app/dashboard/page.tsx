@@ -582,8 +582,9 @@ export default function DashboardPage() {
         { count: facturesImpayees30jCount },
         { count: devisEnAttenteCount },
         { data: stocksBas },
+        { data: affectationsActives },
       ] = await Promise.all([
-        supabase.from('chantiers').select('*', { count: 'exact', head: true }).eq('entreprise_id', eid),
+        supabase.from('chantiers').select('*', { count: 'exact', head: true }).eq('entreprise_id', eid).in('statut', ['en_cours', 'preparation']),
         supabase.from('ouvriers').select('*', { count: 'exact', head: true }).eq('entreprise_id', eid),
         supabase.from('factures').select('*', { count: 'exact', head: true }).eq('entreprise_id', eid),
         supabase.from('ouvriers').select('id').or('actif.eq.true,actif.is.null').eq('entreprise_id', eid),
@@ -595,10 +596,15 @@ export default function DashboardPage() {
         supabase.from('factures').select('*', { count: 'exact', head: true }).eq('entreprise_id', eid).neq('statut', 'paye').lte('date_emission', thirtyDaysAgoStr),
         supabase.from('devis').select('*', { count: 'exact', head: true }).eq('entreprise_id', eid).eq('statut', 'envoye').lte('date_emission', fifteenDaysAgoStr),
         supabase.from('materiaux_stock').select('nom, unite, quantite_stock, quantite_min').eq('entreprise_id', eid),
+        supabase.from('affectations_chantier').select('ouvrier_id').eq('entreprise_id', eid).or('actif.eq.true,actif.is.null'),
       ])
 
       const pointesIds = new Set((pointagesAujourdHui ?? []).map(p => p.ouvrier_id))
-      const nonPointes = (ouvriersActifs ?? []).filter(o => !pointesIds.has(o.id)).length
+      // Seuls les ouvriers affectés à un chantier sont à pointer (sans affectation du tout : tous)
+      const affectes = new Set((affectationsActives ?? []).map(a => a.ouvrier_id))
+      const nonPointes = (ouvriersActifs ?? [])
+        .filter(o => affectes.size === 0 || affectes.has(o.id))
+        .filter(o => !pointesIds.has(o.id)).length
       const nbFacturesRetard = (facturesRetard ?? []).length
       const montantRetard = (facturesRetard ?? []).reduce((acc, f) => acc + Math.max(0, (f.montant_ttc ?? 0) - (f.montant_paye ?? 0)), 0)
       const totalCaMois = (facturesMois ?? []).reduce((acc, f) => acc + (f.montant_ttc ?? 0), 0)
@@ -632,11 +638,12 @@ export default function DashboardPage() {
 
       // Paie du mois précédent non validée sur certains chantiers
       if (eid) {
-        const prevMonthRef = new Date()
-        prevMonthRef.setMonth(prevMonthRef.getMonth() - 1)
-        const prevMonthStart = new Date(prevMonthRef.getFullYear(), prevMonthRef.getMonth(), 1).toISOString().split('T')[0]
-        const prevMonthEndDate = new Date(prevMonthRef.getFullYear(), prevMonthRef.getMonth() + 1, 0)
-        const prevMonthEnd = prevMonthEndDate.toISOString().split('T')[0]
+        // Construit depuis le 1er du mois : setMonth(-1) un 31 débordait sur le mois courant
+        const now = new Date()
+        const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        const prevMonthStart = ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1))
+        const prevMonthEndDate = new Date(now.getFullYear(), now.getMonth(), 0)
+        const prevMonthEnd = ymd(prevMonthEndDate)
         const prevMonthLabel = prevMonthEndDate.toLocaleDateString('fr-FR', { month: 'long' })
 
         const { data: chantierIdsData } = await supabase.from('chantiers').select('id').eq('entreprise_id', eid)

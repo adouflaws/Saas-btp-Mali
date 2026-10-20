@@ -15,7 +15,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/portail') ||
     pathname.startsWith('/tarifs') ||
     pathname.startsWith('/abonnement-expire') ||
-    pathname.startsWith('/signature')
+    pathname.startsWith('/signature') ||
+    pathname.startsWith('/api/signature') ||
+    // Service worker + manifest PWA : une redirection vers /login empêche leur enregistrement
+    pathname === '/sw.js' ||
+    pathname === '/manifest.json'
   ) {
     return NextResponse.next()
   }

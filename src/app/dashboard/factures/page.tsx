@@ -83,6 +83,7 @@ function FacturesPageInner() {
   const [modePaiement, setModePaiement] = useState('wave')
   const [montantPaiement, setMontantPaiement] = useState('')
   const [payant, setPayant] = useState(false)
+  const [paiementError, setPaiementError] = useState('')
 
   // Modal édition
   const [editTarget, setEditTarget] = useState<Facture | null>(null)
@@ -176,19 +177,34 @@ function FacturesPageInner() {
     setSavingTel(false); setTelTarget(null); await fetchFactures()
   }
 
+  // Lignes du PDF : il n'existe pas de table de lignes de facture en base.
+  // Facture qui couvre tout le devis → lignes du devis ; sinon (acompte, situation)
+  // une seule ligne au montant de la facture, pour que le détail = le total.
+  async function getLignesFacture(f: Facture) {
+    const ht = f.montant_ht ?? 0
+    if (f.devis_id) {
+      const [{ data: devis }, { data: lignesDevis }] = await Promise.all([
+        supabase.from('devis').select('numero, montant_ht').eq('id', f.devis_id).single(),
+        supabase.from('lignes_devis').select('designation, unite, quantite, prix_unit, total').eq('devis_id', f.devis_id).order('ordre'),
+      ])
+      if (devis && devis.montant_ht === ht && lignesDevis && lignesDevis.length > 0) {
+        return lignesDevis.map(l => ({
+          designation: l.designation,
+          unite: l.unite,
+          quantite: l.quantite ?? 0,
+          prix_unit: l.prix_unit ?? 0,
+          total: l.total ?? Math.round((l.quantite ?? 0) * (l.prix_unit ?? 0)),
+        }))
+      }
+      if (devis) {
+        return [{ designation: `Situation de travaux — devis ${devis.numero}${f.chantiers?.nom ? ` (${f.chantiers.nom})` : ''}`, unite: 'forfait', quantite: 1, prix_unit: ht, total: ht }]
+      }
+    }
+    return [{ designation: `Travaux${f.chantiers?.nom ? ` — ${f.chantiers.nom}` : ''}`, unite: 'forfait', quantite: 1, prix_unit: ht, total: ht }]
+  }
+
   async function downloadFacturePDF(f: Facture) {
-    const { data: lignesRaw } = await supabase
-      .from('lignes_factures')
-      .select('designation, unite, quantite, prix_unitaire')
-      .eq('facture_id', f.id)
-      .order('id')
-    const lignes = (lignesRaw ?? []).map((l: { designation: string; unite: string | null; quantite: number | null; prix_unitaire: number | null }) => ({
-      designation: l.designation,
-      unite: l.unite,
-      quantite: l.quantite ?? 0,
-      prix_unit: l.prix_unitaire ?? 0,
-      total: Math.round((l.quantite ?? 0) * (l.prix_unitaire ?? 0)),
-    }))
+    const lignes = await getLignesFacture(f)
     const ht = f.montant_ht ?? 0
     const tva_taux = f.tva_taux ?? 18
     const tva = Math.round(ht * tva_taux / 100)
@@ -211,36 +227,56 @@ function FacturesPageInner() {
 
   async function handlePaiement() {
     if (!paiementTarget) return
-    setPayant(true)
-    const montant = Number(montantPaiement) || 0
-    const totalPaye = (paiementTarget.montant_paye ?? 0) + montant
     const ttc = paiementTarget.montant_ttc ?? 0
-    const newStatut = totalPaye >= ttc ? 'paye' : totalPaye > 0 ? 'partiellement_paye' : 'en_attente'
-    await supabase.from('factures').update({
+    const dejaPaye = paiementTarget.montant_paye ?? 0
+    const montant = Math.round(Number(montantPaiement) || 0)
+    setPaiementError('')
+    if (montant <= 0) { setPaiementError('Saisissez un montant supérieur à 0.'); return }
+    if (dejaPaye + montant > ttc) {
+      setPaiementError(`Le paiement dépasse le reste à payer (${(ttc - dejaPaye).toLocaleString('fr-FR')} FCFA).`)
+      return
+    }
+    setPayant(true)
+    const totalPaye = dejaPaye + montant
+    const newStatut = totalPaye >= ttc ? 'paye' : 'partiellement_paye'
+    const { error } = await supabase.from('factures').update({
       montant_paye: totalPaye,
       statut: newStatut,
       mode_paiement: modePaiement,
       ...(newStatut === 'paye' ? { date_paiement: new Date().toISOString() } : {}),
     }).eq('id', paiementTarget.id)
+    if (error) setPageError("Le paiement n'a pas été enregistré : " + error.message)
     setPaiementTarget(null); setPayant(false); await fetchFactures()
   }
 
   async function handleEdit() {
     if (!editTarget) return
     setSaving(true)
-    await supabase.from('factures').update({
+    const ttc = editTarget.montant_ttc ?? 0
+    // Statut et montant payé restent cohérents : sinon le portail client et les
+    // créances affichent un reste à payer sur une facture marquée payée.
+    const coherence =
+      editStatut === 'paye' && editTarget.statut !== 'paye'
+        ? { montant_paye: ttc, date_paiement: new Date().toISOString() }
+        : editStatut !== 'paye' && editTarget.statut === 'paye'
+          ? { montant_paye: 0, date_paiement: null }
+          : {}
+    const { error } = await supabase.from('factures').update({
       date_echeance: editDateEcheance || null,
       mode_paiement: editMode || null,
       notes: editNotes || null,
       statut: editStatut,
+      ...coherence,
     }).eq('id', editTarget.id)
+    if (error) setPageError("La facture n'a pas été modifiée : " + error.message)
     setSaving(false); setEditTarget(null); await fetchFactures()
   }
 
   async function handleDelete() {
     if (!deleteTarget) return
     setDeleting(true)
-    await supabase.from('factures').delete().eq('id', deleteTarget.id)
+    const { error } = await supabase.from('factures').delete().eq('id', deleteTarget.id)
+    if (error) setPageError("La facture n'a pas été supprimée : " + error.message)
     setDeleteTarget(null); setDeleting(false); await fetchFactures()
   }
 
@@ -526,6 +562,7 @@ function FacturesPageInner() {
               <label className="block text-[11px] font-semibold text-gray-500 mb-1.5 uppercase tracking-widest">Montant reçu (FCFA)</label>
               <input type="number" min="0" value={montantPaiement} onChange={e => setMontantPaiement(e.target.value)}
                 className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all" />
+              {paiementError && <p role="alert" className="text-red-400 text-[12px] mt-1.5">{paiementError}</p>}
             </div>
             <div className="mb-5">
               <label className="block text-[11px] font-semibold text-gray-500 mb-2 uppercase tracking-widest">Mode de paiement</label>
@@ -540,7 +577,7 @@ function FacturesPageInner() {
               </div>
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setPaiementTarget(null)} className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-gray-400 text-[13px] font-medium">Annuler</button>
+              <button onClick={() => { setPaiementTarget(null); setPaiementError('') }} className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-gray-400 text-[13px] font-medium">Annuler</button>
               <button onClick={handlePaiement} disabled={payant || !montantPaiement}
                 className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[13px] font-semibold disabled:opacity-60 flex items-center justify-center gap-2">
                 {payant ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Enregistrement…</> : 'Enregistrer le paiement'}

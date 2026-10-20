@@ -94,8 +94,6 @@ export default function LoginPage() {
         options: { data: { nom: email.split('@')[0], entreprise: entreprise || 'Mon Entreprise', telephone: telephone || null } },
       })
       if (error) { setError(mapSignupError(error.message)); setLoading(false); return }
-      const waMsg = encodeURIComponent(`Nouveau client inscrit !\nNom : ${entreprise || email}\nEmail : ${email}\nDate : ${new Date().toLocaleString('fr-FR')}\nhttps://saas-btp-mali.vercel.app/admin/clients`)
-      console.log(`[BTP Mali] Nouveau client — WhatsApp : https://wa.me/22376753087?text=${waMsg}`)
       const { error: loginError } = await supabase.auth.signInWithPassword({ email, password })
       if (loginError) { setSuccess('Compte créé ! Connectez-vous pour accéder à votre espace.'); setMode('login'); setLoading(false); return }
       router.push('/dashboard?welcome=1')

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { cacheSet, cacheGet, queueAdd } from '@/lib/offline'
 import StatusBadge, { statutBarClass, statutBadgeClasses } from '@/components/StatusBadge'
 import { STATUTS_TACHE } from '@/constants/statuts'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 
 const supabase = createClient()
 
@@ -70,22 +71,9 @@ export default function PlanningPage({ params }: { params: Promise<{ id: string 
   const [deleteTarget, setDeleteTarget] = useState<Tache | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator !== 'undefined' ? navigator.onLine : true
-  )
+  const isOnline = useOnlineStatus()
   const [offlineMsg, setOfflineMsg] = useState('')
 
-  /* ── Détection réseau ── */
-  useEffect(() => {
-    const onOnline  = () => setIsOnline(true)
-    const onOffline = () => setIsOnline(false)
-    window.addEventListener('online',  onOnline)
-    window.addEventListener('offline', onOffline)
-    return () => {
-      window.removeEventListener('online',  onOnline)
-      window.removeEventListener('offline', onOffline)
-    }
-  }, [])
 
   const fetchTaches = useCallback(async () => {
     /* Offline : charger depuis localStorage */

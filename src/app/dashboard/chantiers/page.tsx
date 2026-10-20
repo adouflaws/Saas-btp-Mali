@@ -9,6 +9,7 @@ import { useActionGuard } from '@/hooks/useActionGuard'
 import PageTooltip from '@/components/PageTooltip'
 import StatusBadge, { statutBarClass } from '@/components/StatusBadge'
 import { STATUTS_CHANTIER } from '@/constants/statuts'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 
 const supabase = createClient()
 
@@ -106,10 +107,11 @@ export default function ChantiersPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<Chantier | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // Historique rattaché au chantier visé : la suppression effacerait en cascade
+  // factures, dépenses et pointages, donc on la bloque s'il y en a.
+  const [deleteHisto, setDeleteHisto] = useState<{ factures: number; depenses: number; pointages: number } | null>(null)
 
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator !== 'undefined' ? navigator.onLine : true
-  )
+  const isOnline = useOnlineStatus()
   const [offlineMsg, setOfflineMsg] = useState('')
 
   const fetchChantiers = useCallback(async (eid: string) => {
@@ -134,17 +136,6 @@ export default function ChantiersPage() {
     }
   }, [])
 
-  /* ── Détection réseau ── */
-  useEffect(() => {
-    const onOnline  = () => setIsOnline(true)
-    const onOffline = () => setIsOnline(false)
-    window.addEventListener('online',  onOnline)
-    window.addEventListener('offline', onOffline)
-    return () => {
-      window.removeEventListener('online',  onOnline)
-      window.removeEventListener('offline', onOffline)
-    }
-  }, [])
 
   useEffect(() => {
     async function init() {
@@ -274,10 +265,34 @@ export default function ChantiersPage() {
     await fetchChantiers(entrepriseId)
   }
 
+  async function openDelete(c: Chantier) {
+    setDeleteHisto(null)
+    setDeleteTarget(c)
+    const head = { count: 'exact' as const, head: true }
+    const [f, d, p] = await Promise.all([
+      supabase.from('factures').select('id', head).eq('chantier_id', c.id),
+      supabase.from('depenses').select('id', head).eq('chantier_id', c.id),
+      supabase.from('pointages').select('id', head).eq('chantier_id', c.id),
+    ])
+    setDeleteHisto({ factures: f.count ?? 0, depenses: d.count ?? 0, pointages: p.count ?? 0 })
+  }
+
+  const deleteBloque = !!deleteHisto && (deleteHisto.factures + deleteHisto.depenses + deleteHisto.pointages) > 0
+
   async function handleDelete() {
-    if (!deleteTarget || !entrepriseId) return
+    if (!deleteTarget || !entrepriseId || !deleteHisto || deleteBloque) return
     setDeleting(true)
     const { error } = await supabase.from('chantiers').delete().eq('id', deleteTarget.id)
+    if (error) setPageError(error.message)
+    setDeleteTarget(null)
+    setDeleting(false)
+    await fetchChantiers(entrepriseId)
+  }
+
+  async function handleAnnuler() {
+    if (!deleteTarget || !entrepriseId) return
+    setDeleting(true)
+    const { error } = await supabase.from('chantiers').update({ statut: 'annule' }).eq('id', deleteTarget.id)
     if (error) setPageError(error.message)
     setDeleteTarget(null)
     setDeleting(false)
@@ -442,7 +457,7 @@ export default function ChantiersPage() {
                       </svg>
                     </button>
                     <button
-                      onClick={() => guard(() => setDeleteTarget(c))}
+                      onClick={() => guard(() => openDelete(c))}
                       className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-red-500/10 text-gray-400 hover:text-red-400 transition-colors"
                       title="Supprimer"
                       aria-label="Supprimer ce chantier"
@@ -597,10 +612,23 @@ export default function ChantiersPage() {
                 <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <h3 className="text-white text-[15px] font-semibold text-center mb-2">Supprimer le chantier ?</h3>
-            <p className="text-gray-500 text-[13px] text-center mb-6">
-              <span className="text-gray-300 font-medium">{deleteTarget.nom}</span> sera définitivement supprimé. Cette action est irréversible.
-            </p>
+            <h3 className="text-white text-[15px] font-semibold text-center mb-2">
+              {deleteBloque ? 'Suppression impossible' : 'Supprimer le chantier ?'}
+            </h3>
+            {deleteBloque && deleteHisto ? (
+              <p className="text-gray-500 text-[13px] text-center mb-6">
+                <span className="text-gray-300 font-medium">{deleteTarget.nom}</span> a un historique
+                ({[
+                  deleteHisto.factures > 0 && `${deleteHisto.factures} facture${deleteHisto.factures > 1 ? 's' : ''}`,
+                  deleteHisto.depenses > 0 && `${deleteHisto.depenses} dépense${deleteHisto.depenses > 1 ? 's' : ''}`,
+                  deleteHisto.pointages > 0 && `${deleteHisto.pointages} pointage${deleteHisto.pointages > 1 ? 's' : ''}`,
+                ].filter(Boolean).join(', ')}). Le supprimer effacerait aussi ces données. Passez-le plutôt en « Annulé » : il est conservé avec tout son historique.
+              </p>
+            ) : (
+              <p className="text-gray-500 text-[13px] text-center mb-6">
+                <span className="text-gray-300 font-medium">{deleteTarget.nom}</span> sera définitivement supprimé. Cette action est irréversible.
+              </p>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setDeleteTarget(null)}
@@ -608,9 +636,18 @@ export default function ChantiersPage() {
               >
                 Annuler
               </button>
+              {deleteBloque ? (
+                <button
+                  onClick={handleAnnuler}
+                  disabled={deleting}
+                  className="flex-1 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold transition-colors disabled:opacity-60"
+                >
+                  {deleting ? 'Enregistrement…' : 'Passer en « Annulé »'}
+                </button>
+              ) : (
               <button
                 onClick={handleDelete}
-                disabled={deleting}
+                disabled={deleting || !deleteHisto}
                 className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-[13px] font-semibold transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {deleting ? (
@@ -623,6 +660,7 @@ export default function ChantiersPage() {
                   </>
                 ) : 'Supprimer'}
               </button>
+              )}
             </div>
           </div>
         </div>

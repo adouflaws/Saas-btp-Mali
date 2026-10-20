@@ -327,7 +327,7 @@ export default function BudgetPage() {
         chantier_id: sortieForm.chantier_id,
         categorie: 'materiaux',
         description: `${sortieMateriau.nom} × ${qte} ${sortieMateriau.unite}`,
-        montant: qte * (sortieMateriau.prix_unitaire ?? 0),
+        montant: Math.round(qte * (sortieMateriau.prix_unitaire ?? 0)),
         date_depense: todayStr(),
         source: 'auto_stock',
         source_id: mouvement.id,
@@ -375,7 +375,8 @@ export default function BudgetPage() {
     const nouvelleQte = stockActuel + qte
     const ancienPrix = entreeMateriau.prix_unitaire ?? 0
     const nouveauPrixMoyen = prixAchat != null && nouvelleQte > 0
-      ? ((stockActuel * ancienPrix) + (qte * prixAchat)) / nouvelleQte
+      // prix_unitaire est un bigint : un prix moyen décimal ferait échouer la mise à jour
+      ? Math.round(((stockActuel * ancienPrix) + (qte * prixAchat)) / nouvelleQte)
       : ancienPrix
     const { error: updErr } = await supabase.from('materiaux_stock').update({
       quantite_stock: nouvelleQte,

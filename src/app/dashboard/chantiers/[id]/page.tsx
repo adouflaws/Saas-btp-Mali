@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { createBrowserClient } from '@supabase/ssr'
 import { useActionGuard } from '@/hooks/useActionGuard'
 import StatusBadge, { statutBarClass } from '@/components/StatusBadge'
+import { formatWhatsAppTel } from '@/lib/phone'
 
 const supabase = createClient()
 const PORTAL_BASE = 'https://saas-btp-mali.vercel.app/portail'
@@ -203,15 +204,11 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
 
   const fetchMateriaux = useCallback(async () => {
     setLoadingMateriaux(true)
-    console.log('=== CHARGEMENT MATERIAUX CHANTIER ===')
-    console.log('Chantier ID:', chantierId)
     const { data, error } = await supabase.from('mouvements_stock')
       .select('id, quantite, prix_unitaire, created_at, materiaux_stock(nom, unite)')
       .eq('chantier_id', chantierId)
       .eq('type', 'sortie')
       .order('created_at', { ascending: false })
-    console.log('Mouvements trouvés:', data)
-    console.log('Erreur:', error)
     if (error) setPageError(error.message)
     setSortiesMateriaux((data ?? []) as unknown as SortieMateriau[])
     setLoadingMateriaux(false)
@@ -299,7 +296,7 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
   function handleWhatsApp() {
     if (!chantier) return
     const msg = `Bonjour ${chantier.client_nom}, suivez l'avancement de votre chantier *${chantier.nom}* en temps réel ici : ${portalUrl}`
-    const tel = chantier.client_telephone?.replace(/\D/g, '')
+    const tel = formatWhatsAppTel(chantier.client_telephone)
     const url = tel ? `https://wa.me/${tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`
     window.open(url, '_blank')
   }
@@ -321,19 +318,13 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
     if (!files || files.length === 0) return
     setUploading(true); setUploadError('')
 
-    console.log('=== DEBUT UPLOAD ===')
-    console.log('Nombre de fichiers:', files.length)
-    console.log('SUPABASE_URL définie:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
-    console.log('SUPABASE_KEY définie:', !!process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)
 
     const supabaseBrowser = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
     )
 
-    console.log('=== RECUPERATION USER ===')
     const { data: { user }, error: userError } = await supabaseBrowser.auth.getUser()
-    console.log('User:', user?.id)
     if (!user) {
       console.error('User non connecté:', userError)
       setUploadError('Non authentifié : ' + (userError?.message ?? 'session manquante'))
@@ -341,15 +332,12 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
       return
     }
 
-    console.log('=== RECUPERATION PROFIL ===')
     const { data: profile, error: profileError } = await supabaseBrowser
       .from('profiles')
       .select('entreprise_id')
       .eq('id', user.id)
       .single()
 
-    console.log('Profile:', profile)
-    console.log('Entreprise ID:', profile?.entreprise_id)
 
     if (profileError || !profile?.entreprise_id) {
       console.error('Profil non trouvé:', profileError)
@@ -361,20 +349,15 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
     for (const file of Array.from(files)) {
       if (!file.type.startsWith('image/')) continue
 
-      console.log('=== UPLOAD STORAGE ===')
-      console.log('File:', file?.name, file?.size)
-      console.log('ChantierID:', chantierId)
 
       const cleanName = file.name.replace(/[^a-zA-Z0-9.]/g, '_').toLowerCase()
       const filePath = `${profile.entreprise_id}/${chantierId}/${Date.now()}_${cleanName}`
-      console.log('FilePath:', filePath)
 
       const { error: storageError } = await supabaseBrowser
         .storage
         .from('photos-chantier')
         .upload(filePath, file, { upsert: true })
 
-      console.log('Storage error:', storageError)
 
       if (storageError) {
         console.error('Storage error complet:', JSON.stringify(storageError))
@@ -388,9 +371,7 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
         .from('photos-chantier')
         .getPublicUrl(filePath)
 
-      console.log('publicUrl:', publicUrl)
 
-      console.log('=== INSERT DB ===')
       const { error: dbError } = await supabaseBrowser
         .from('photos_chantier')
         .insert({
@@ -401,7 +382,6 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
           prise_le: new Date().toISOString(),
         })
 
-      console.log('DB error:', dbError)
 
       if (dbError) {
         console.error('DB error complet:', JSON.stringify(dbError))

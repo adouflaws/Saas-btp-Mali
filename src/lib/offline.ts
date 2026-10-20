@@ -1,3 +1,5 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+
 /* ─── Cache localStorage ──────────────────────────────────── */
 
 export function cacheSet<T>(key: string, data: T): void {
@@ -53,4 +55,55 @@ export function queueClear(): void {
 
 export function queueCount(): number {
   return queueGet().length
+}
+
+/* ─── Synchronisation ─────────────────────────────────────── */
+
+// Clés d'unicité des tables où une même action peut être rejouée (upsert)
+const UPSERT_KEYS: Record<string, string> = {
+  pointages: 'chantier_id,ouvrier_id,date_pointage',
+}
+
+export type SyncResult = { ok: number; errors: number; remaining: number }
+
+// Une seule synchronisation à la fois : layout et pages écoutent tous l'événement
+// "online", deux passes en parallèle rejouaient la même file (doublons, 409).
+let inFlight: Promise<SyncResult> | null = null
+
+export function syncQueue(supabase: SupabaseClient): Promise<SyncResult> {
+  if (!inFlight) inFlight = runSync(supabase).finally(() => { inFlight = null })
+  return inFlight
+}
+
+async function runSync(supabase: SupabaseClient): Promise<SyncResult> {
+  const queue = queueGet()
+  const done = new Set<string>()
+  let errors = 0
+
+  for (const action of queue) {
+    try {
+      let error: unknown = null
+      if (action.op === 'insert') {
+        const onConflict = UPSERT_KEYS[action.table]
+        ;({ error } = onConflict
+          ? await supabase.from(action.table).upsert(action.data, { onConflict })
+          : await supabase.from(action.table).insert(action.data))
+      } else if (action.op === 'update' && action.rowId && !action.rowId.startsWith('temp_')) {
+        ;({ error } = await supabase.from(action.table).update(action.data).eq('id', action.rowId))
+      }
+      if (error) errors++
+      else done.add(action.id)
+    } catch {
+      errors++
+    }
+  }
+
+  // On ne retire que ce qui est passé ; une action ajoutée pendant la synchro reste en file
+  const remaining = queueGet().filter(a => !done.has(a.id))
+  try {
+    if (remaining.length) localStorage.setItem('btp_queue', JSON.stringify(remaining))
+    else localStorage.removeItem('btp_queue')
+  } catch {}
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('btp-queue-change'))
+  return { ok: done.size, errors, remaining: remaining.length }
 }

@@ -6,6 +6,7 @@ import PageSkeleton from '@/components/PageSkeleton'
 import { useActionGuard } from '@/hooks/useActionGuard'
 import PageTooltip from '@/components/PageTooltip'
 import { generateDocument } from '@/lib/pdf/generateDocument'
+import { formatWhatsAppTel } from '@/lib/phone'
 
 const supabase = createClient()
 
@@ -334,27 +335,26 @@ export default function CreancesPage() {
   /* ── Clic bouton relance : PDF → WhatsApp → log ── */
   async function handleRelance(f: Facture, niveau: LevelKey) {
     const key = `${f.id}_${niveau}`
+    const msg = genMessage(niveau, f, entreprise)
+    const tel = formatWhatsAppTel(getEffectiveTel(f))
+    // WhatsApp ouvert tout de suite, dans le geste de l'utilisateur : ouvert après
+    // la génération du PDF (await), il est bloqué par les navigateurs mobiles.
+    if (tel) window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank')
     setLoadingRelance(key)
     try {
-      const msg = genMessage(niveau, f, entreprise)
-
-      // 1. Génère et télécharge le PDF
+      // PDF de relance téléchargé en parallèle, à joindre au message
       await generateAndDownloadPDF({ f, niveau, ent: entreprise, message: msg })
 
-      // 2. Ouvre WhatsApp si le numéro existe
-      const tel = getEffectiveTel(f)?.replace(/\D/g, '')
       if (tel) {
-        console.log('[WA message avant encodage]', JSON.stringify(msg))
-        window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank')
         setWaInstruction(f.id)
         setTimeout(() => setWaInstruction(p => p === f.id ? null : p), 10000)
       } else {
         showToast('PDF téléchargé — ajoutez le téléphone pour envoyer sur WhatsApp', 'error')
       }
 
-      // 3. Log relance
       if (f.entreprise_id) {
-        await supabase.from('relances').insert({ facture_id: f.id, entreprise_id: f.entreprise_id, type: 'whatsapp', niveau })
+        const { error } = await supabase.from('relances').insert({ facture_id: f.id, entreprise_id: f.entreprise_id, type: 'whatsapp', niveau })
+        if (error) showToast("Relance envoyée mais non enregistrée dans l'historique", 'error')
         await fetchData()
       }
     } finally {
@@ -368,11 +368,12 @@ export default function CreancesPage() {
     const subject = genEmailSubject(niveau, f)
     const body    = genEmailBody(niveau, f, entreprise)
 
-    if (email) {
-      window.open(`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank')
-    } else {
+    if (!email) {
+      // Pas d'email : rien n'est envoyé, donc rien à inscrire dans l'historique
       showToast('Aucun email client — ajoutez-en un via "Modifier"', 'error')
+      return
     }
+    window.open(`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank')
 
     if (f.entreprise_id) {
       await supabase.from('relances').insert({ facture_id: f.id, entreprise_id: f.entreprise_id, type: 'email', niveau })

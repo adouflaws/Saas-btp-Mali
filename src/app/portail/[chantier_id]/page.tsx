@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies, headers } from 'next/headers'
 import PhotoModal from './PhotoModal'
 import StatusBadge, { statutBarClass } from '@/components/StatusBadge'
+import { formatWhatsAppTel } from '@/lib/phone'
 
 /* ─── Types ─────────────────────────────────────────── */
 
@@ -47,15 +48,6 @@ function fcfaEspace(v: number): string {
   const n = Math.round(v)
   const digits = Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
   return `${n < 0 ? '-' : ''}${digits} FCFA`
-}
-
-// Format international requis par wa.me (ex: 22370000000) — enlève espaces/+/tirets,
-// et préfixe le code pays 223 si le numéro a été saisi en local sur 8 chiffres.
-function formatWhatsAppTel(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  const digits = raw.replace(/\D/g, '')
-  if (!digits) return null
-  return digits.length === 8 ? `223${digits}` : digits
 }
 
 function relativeTime(dateStr: string): string {

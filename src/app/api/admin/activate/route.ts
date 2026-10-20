@@ -5,7 +5,6 @@ export async function POST(req: Request) {
   try {
     const { entreprise_id, plan, mois } = await req.json()
 
-    console.log('Activation:', { entreprise_id, plan, mois })
 
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
       ?.replace(/^﻿/, '')
@@ -29,8 +28,6 @@ export async function POST(req: Request) {
       .eq('id', entreprise_id)
       .select()
 
-    console.log('Résultat update:', data)
-    console.log('Erreur update:', error)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 })

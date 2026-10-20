@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { formatWhatsAppTel } from '@/lib/phone'
 
 /* ─── Types ──────────────────────────────────────── */
 
@@ -106,10 +107,6 @@ export default function AdminClientsPage() {
   async function handleActivate() {
     if (!modal) return
     try {
-      console.log('=== ACTIVATION CLIENT ===')
-      console.log('Entreprise ID:', modal.id)
-      console.log('Plan:', selectedPlan)
-      console.log('Mois:', selectedMois)
 
       const res = await fetch('/api/admin/activate', {
         method: 'POST',
@@ -121,7 +118,6 @@ export default function AdminClientsPage() {
         }),
       })
       const result = await res.json()
-      console.log('Résultat activation:', result)
 
       if (result.error) {
         showToast('Erreur : ' + result.error)
@@ -135,7 +131,7 @@ export default function AdminClientsPage() {
       const message = encodeURIComponent(
         `Bonjour, votre abonnement BTP Mali ${selectedPlan} est activé ! 🎉\n🔗 saas-btp-mali.vercel.app/login\n— BTP Mali 🏗️`
       )
-      const tel = modal.telephone?.replace(/\D/g, '')
+      const tel = formatWhatsAppTel(modal.telephone)
       const waUrl = tel
         ? `https://wa.me/${tel}?text=${message}`
         : `https://wa.me/22376753087?text=${message}`

@@ -382,7 +382,12 @@ export default function EquipesPage() {
     if (!deleteTarget) return
     setDeleting(true)
     const { error } = await supabase.from('ouvriers').delete().eq('id', deleteTarget.id)
-    if (error) setPageError(error.message)
+    if (error) {
+      // 23503 = clé étrangère : l'ouvrier a des affectations / pointages / avances
+      setPageError(error.code === '23503'
+        ? `${deleteTarget.prenom ? deleteTarget.prenom + ' ' : ''}${deleteTarget.nom} a un historique (affectations, pointages ou avances) et ne peut pas être supprimé. Désactivez-le plutôt : il n'apparaîtra plus dans les pointages et son historique de paie est conservé.`
+        : error.message)
+    }
     setDeleteTarget(null); setDeleting(false); await fetchOuvriers()
   }
 

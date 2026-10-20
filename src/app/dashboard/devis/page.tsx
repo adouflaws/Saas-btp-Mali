@@ -29,7 +29,7 @@ type DevisRow = {
   entreprise_id: string
   client_nom: string | null
   client_telephone: string | null
-  token_signature: string | null
+  signature_token: string | null
   date_signature: string | null
   signe_par: string | null
   chantiers: { nom: string; client_nom: string; ville: string | null; client_telephone: string | null; client_email: string | null } | null
@@ -388,7 +388,6 @@ function DevisPageInner() {
           setSaving(false); return
         }
         const numero = rpcData as string
-        console.log(`[devis] tentative ${attempt} — numéro généré :`, numero)
 
         const { data, error } = await supabase.from('devis').insert({
           chantier_id: form.chantier_id || null,
@@ -467,19 +466,12 @@ function DevisPageInner() {
         categorie: l.categorie || 'materiaux',
       }))
 
-    console.log('=== SAVE MODELE ===')
-    console.log('Nom modele:', nomModele)
-    console.log('Lignes:', lignes)
-    console.log('Lignes JSON:', lignesJson)
-    console.log('Entreprise ID:', eid)
 
     const { data, error } = await supabase
       .from('modeles_devis')
       .insert({ entreprise_id: eid, nom: nomModele.trim(), lignes: lignesJson })
       .select()
 
-    console.log('Résultat:', data)
-    console.log('Erreur:', error)
     if (error) console.error('Erreur complète:', JSON.stringify(error, null, 2))
 
     setSavingModele(false)
@@ -495,7 +487,6 @@ function DevisPageInner() {
       .select('id, nom, created_at, lignes')
       .eq('entreprise_id', eid)
       .order('created_at', { ascending: false })
-    console.log('Modèles trouvés:', data, 'Erreur:', error)
     setModeles((data ?? []) as ModeleDevis[])
     setShowLoadModele(true)
   }
@@ -519,10 +510,11 @@ function DevisPageInner() {
 
   async function handleEnvoyerSignature(d: DevisRow) {
     setGeneratingToken(true)
-    let token = d.token_signature
+    let token = d.signature_token
     if (!token) {
       token = crypto.randomUUID()
-      await supabase.from('devis').update({ token_signature: token, statut: 'envoye' }).eq('id', d.id)
+      const { error } = await supabase.from('devis').update({ signature_token: token, statut: 'envoye' }).eq('id', d.id)
+      if (error) { setPageError('Impossible de créer le lien de signature : ' + error.message); setGeneratingToken(false); return }
       await fetchDevis()
     }
     setSignatureToken(token)
@@ -556,9 +548,6 @@ function DevisPageInner() {
 
     const devis_id = convertTarget.id
 
-    console.log('=== CONVERSION DEVIS → FACTURE ===')
-    console.log('Devis ID:', devis_id)
-
     // Garde-fou anti-doublon : un devis déjà facturé ne repasse jamais par ici
     const { data: dejaFacture } = await supabase
       .from('factures').select('id').eq('devis_id', devis_id).limit(1)
@@ -577,11 +566,9 @@ function DevisPageInner() {
       .eq('id', devis_id)
       .single()
 
-    console.log('Devis récupéré:', devis)
-    console.log('Erreur récupération:', devisError)
-
     if (devisError || !devis) {
-      alert('Devis introuvable')
+      setPageError("Devis introuvable : la facture n'a pas été créée.")
+      setConvertTarget(null)
       setConverting(false)
       return
     }
@@ -592,11 +579,9 @@ function DevisPageInner() {
       { p_entreprise_id: eid, p_type: 'facture' }
     )
 
-    console.log('Numéro facture généré:', numero)
-    console.log('Erreur numéro:', numeroError)
-
     if (numeroError || !numero) {
-      alert('Erreur génération numéro facture')
+      setPageError('Impossible de générer le numéro de facture. Réessayez.')
+      setConvertTarget(null)
       setConverting(false)
       return
     }
@@ -627,36 +612,18 @@ function DevisPageInner() {
       .select()
       .single()
 
-    console.log('Facture créée:', facture)
-    console.log('Erreur création facture:', factureError)
-
     if (factureError) {
-      console.error('Erreur complète:', JSON.stringify(factureError, null, 2))
-      alert('Erreur: ' + factureError.message)
+      setPageError("La facture n'a pas pu être créée : " + factureError.message)
+      setConvertTarget(null)
       setConverting(false)
       return
     }
 
-    // Copie les lignes du devis vers la facture
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const lignesDevis = (devis as any).lignes_devis ?? []
-    if (lignesDevis.length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const lignesFacture = lignesDevis.map((ligne: any) => ({
-        facture_id: facture.id,
-        designation: ligne.designation,
-        unite: ligne.unite,
-        quantite: ligne.quantite,
-        prix_unitaire: ligne.prix_unit,
-      }))
-      const { error: lignesError } = await supabase.from('lignes_factures').insert(lignesFacture)
-      console.log('Erreur copie lignes:', lignesError)
-    }
+    // Pas de copie des lignes : il n'existe pas de table de lignes de facture,
+    // le PDF de la facture relit les lignes du devis (voir factures/page.tsx).
 
     // Le devis reste 'accepte' : la facture liée (devis_id) suffit à le marquer comme facturé.
     setDevisFactures(prev => new Set(prev).add(devis_id))
-
-    console.log('SUCCESS: Facture créée avec succès !')
     setConvertTarget(null)
     setConverting(false)
     router.push('/dashboard/factures')

@@ -17,8 +17,6 @@ async function supabaseRest(path: string, method: string, body?: unknown) {
     ?.replace(/^﻿/, '')
     ?.trim()
 
-  console.log('REST', method, url)
-  console.log('Key définie:', !!key, '| Préfixe:', key?.slice(0, 15))
 
   const res = await fetch(url, {
     method,
@@ -35,8 +33,6 @@ async function supabaseRest(path: string, method: string, body?: unknown) {
   let data: unknown
   try { data = JSON.parse(text) } catch { data = text }
 
-  console.log('HTTP status:', res.status)
-  console.log('Résultat:', JSON.stringify(data).slice(0, 300))
 
   return { ok: res.ok, status: res.status, data }
 }
@@ -48,9 +44,6 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const { action, entreprise_id } = body
 
-  console.log('=== ACTION ADMIN ENTREPRISE ===')
-  console.log('Action:', action)
-  console.log('Entreprise ID:', entreprise_id)
 
   if (!entreprise_id) return NextResponse.json({ error: 'entreprise_id requis' }, { status: 400 })
 
@@ -58,8 +51,6 @@ export async function POST(request: NextRequest) {
   if (action === 'activer') {
     const { plan, duree_jours } = body
 
-    console.log('Plan:', plan)
-    console.log('Durée (jours):', duree_jours)
 
     const dateFin = new Date(Date.now() + duree_jours * 86400000)
     const dateFinStr = dateFin.toISOString().split('T')[0]
@@ -84,7 +75,6 @@ export async function POST(request: NextRequest) {
   if (action === 'jours') {
     const { nb_jours } = body
 
-    console.log('Nb jours:', nb_jours)
 
     const { data: getResult } = await supabaseRest(
       `entreprises?id=eq.${entreprise_id}&select=date_fin_abonnement`,

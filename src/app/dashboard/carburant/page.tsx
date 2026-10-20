@@ -190,10 +190,6 @@ export default function CarburantPage() {
       setPleinErr(msg); setSavingPlein(false); return
     }
 
-    console.log('=== INSERTION PLEIN ===')
-    console.log('entreprise_id:', profile.entreprise_id)
-    console.log('vehicule_id:', pleinForm.vehicule_id)
-    console.log('litres:', pleinForm.litres, '| montant:', pleinForm.montant)
 
     const { data: plein, error } = await supabase.from('pleins_carburant').insert({
       vehicule_id:   pleinForm.vehicule_id,

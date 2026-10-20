@@ -4,9 +4,7 @@ import { useEffect, useState } from 'react'
 import { queueCount } from '@/lib/offline'
 
 export default function NetworkStatus() {
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator !== 'undefined' ? navigator.onLine : true
-  )
+  const [isOnline, setIsOnline] = useState(true) // état réel lu après montage : Node 21+ expose un navigator sans onLine (écart d'hydratation)
   const [visible, setVisible] = useState(false)
   const [pending, setPending] = useState(0)
 

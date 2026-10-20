@@ -58,7 +58,6 @@ export default function ParametresPage() {
       let userId: string | null = null
       try {
         const { data: { user }, error: authError } = await supabase.auth.getUser()
-        console.log('[parametres] auth user:', user?.id, authError)
         if (!user) { setLoading(false); return }
         userId = user.id
       } catch (e) {
@@ -71,7 +70,6 @@ export default function ParametresPage() {
       try {
         const { data: profile, error: profError } = await supabase
           .from('profiles').select('entreprise_id').eq('id', userId).single()
-        console.log('[parametres] profile:', profile, profError)
         if (!profile?.entreprise_id) {
           setPageError('Aucune entreprise associée à ce compte.')
           setLoading(false); return
@@ -91,7 +89,6 @@ export default function ParametresPage() {
           .select('id, nom, adresse, telephone, email, rccm, nif, logo_url')
           .eq('id', eid)
           .maybeSingle()
-        console.log('[parametres] entreprise:', ent, entError)
         if (entError) { setPageError('Erreur chargement entreprise : ' + entError.message) }
         if (ent) {
           const e = ent as EntrepriseData
@@ -116,7 +113,6 @@ export default function ParametresPage() {
           .select('*')
           .eq('entreprise_id', eid)
           .order('designation')
-        console.log('[parametres] tarifs:', tarifsData, tarifsError)
         if (tarifsError) { console.error('Erreur chargement tarifs:', tarifsError) }
         setTarifs((tarifsData ?? []) as TarifPerso[])
       } catch (e) {
@@ -133,8 +129,6 @@ export default function ParametresPage() {
     e.preventDefault()
     setPageError('')
 
-    console.log('=== SAVE PARAMETRES ===')
-    console.log('entreprise_id utilise:', entrepriseId)
 
     if (!entrepriseId) {
       setPageError('Erreur : aucune entreprise associée à ce compte (entreprise_id null).')
@@ -153,7 +147,6 @@ export default function ParametresPage() {
       logo_url: form.logo_url.trim() || null,
     }
 
-    console.log('Donnees a enregistrer:', payload)
 
     const { data, error } = await supabase
       .from('entreprises')
@@ -161,7 +154,6 @@ export default function ParametresPage() {
       .eq('id', entrepriseId)
       .select()
 
-    console.log('Reponse Supabase complete:', { data, error })
 
     if (error) {
       console.error('Erreur complete:', JSON.stringify(error, null, 2))

@@ -1,10 +1,10 @@
 'use client'
 
 import { use, useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { formatWhatsAppTel } from '@/lib/phone'
 
-const supabase = createClient()
-
+// Lecture et réponse passent par /api/signature/[token] : la RLS interdit
+// tout accès anonyme direct à la table "devis".
 type DevisPublic = {
   id: string
   numero: string
@@ -14,7 +14,6 @@ type DevisPublic = {
   tva_taux: number | null
   date_emission: string | null
   date_validite: string | null
-  token_signature: string | null
   date_signature: string | null
   signe_par: string | null
   notes: string | null
@@ -49,77 +48,65 @@ export default function SignaturePage({ params }: { params: Promise<{ token: str
   const [showLignes, setShowLignes] = useState(false)
   const [action, setAction] = useState<PageAction>('idle')
 
+  const [actionError, setActionError] = useState('')
+
   useEffect(() => {
     async function fetchDevis() {
-      const { data, error: err } = await supabase
-        .from('devis')
-        .select('*, chantiers(nom, client_nom), entreprises(nom, telephone, email)')
-        .eq('token_signature', token)
-        .single()
-
-      if (err || !data) {
-        setError('Lien invalide ou devis introuvable.')
+      const res = await fetch(`/api/signature/${encodeURIComponent(token)}`, { cache: 'no-store' }).catch(() => null)
+      const body = res ? await res.json().catch(() => null) : null
+      if (!res?.ok || !body?.devis) {
+        setError(body?.error ?? 'Lien invalide ou devis introuvable.')
         setLoading(false)
         return
       }
 
-      const d = data as DevisPublic
+      const d = body.devis as DevisPublic
       setDevis(d)
       setClientNom(d.chantiers?.client_nom ?? '')
+      setLignes((body.lignes ?? []) as LigneDevisRow[])
 
       if (d.statut === 'accepte') setAction('done_accept')
       else if (d.statut === 'refuse') setAction('done_refuse')
-
-      // Fetch lignes
-      const { data: ligs } = await supabase
-        .from('lignes_devis')
-        .select('*')
-        .eq('devis_id', d.id)
-        .order('ordre')
-
-      setLignes((ligs ?? []) as LigneDevisRow[])
       setLoading(false)
     }
     fetchDevis()
   }, [token])
 
-  async function handleAccepter() {
-    if (!devis || !clientNom.trim()) return
-    setAction('accepting')
-    const { error: err } = await supabase.from('devis').update({
-      statut: 'accepte',
-      date_signature: new Date().toISOString(),
-      signe_par: clientNom.trim(),
-    }).eq('id', devis.id)
-
-    if (err) { setAction('idle'); return }
-    setAction('done_accept')
-
-    fetch('/api/devis/sync-budget', {
+  async function repondre(choix: 'accepter' | 'refuser'): Promise<boolean> {
+    setActionError('')
+    const res = await fetch(`/api/signature/${encodeURIComponent(token)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ devis_id: devis.id }),
-    }).catch(e => console.error('Erreur synchronisation budget prévisionnel:', e))
+      body: JSON.stringify({ action: choix, nom: clientNom.trim() }),
+    }).catch(() => null)
+    if (res?.ok) return true
+    const body = res ? await res.json().catch(() => null) : null
+    setActionError(body?.error ?? 'Connexion impossible. Vérifiez votre réseau et réessayez.')
+    return false
+  }
 
-    // Notification WhatsApp
-    const montant = (devis.montant_ttc ?? 0).toLocaleString('fr-FR')
-    const msg = encodeURIComponent(`✅ ${clientNom.trim()} a accepté le devis ${devis.numero} de ${montant} FCFA`)
-    setTimeout(() => {
-      window.open(`https://wa.me/22376753087?text=${msg}`, '_blank')
-    }, 800)
+  async function handleAccepter() {
+    if (!devis || !clientNom.trim()) return
+    // Fenêtre ouverte dès le clic : ouverte après un await, elle serait bloquée sur mobile
+    const telEntreprise = formatWhatsAppTel(devis.entreprises?.telephone)
+    const waWindow = telEntreprise ? window.open('', '_blank') : null
+    setAction('accepting')
+    if (!(await repondre('accepter'))) { waWindow?.close(); setAction('idle'); return }
+    setAction('done_accept')
+
+    // Prévenir l'entreprise sur WhatsApp
+    if (waWindow && telEntreprise) {
+      const montant = (devis.montant_ttc ?? 0).toLocaleString('fr-FR')
+      const msg = encodeURIComponent(`Devis signé : ${clientNom.trim()} a accepté le devis ${devis.numero} de ${montant} FCFA`)
+      waWindow.location.href = `https://wa.me/${telEntreprise}?text=${msg}`
+    }
   }
 
   async function handleRefuser() {
     if (!devis) return
     setAction('refusing')
-    await supabase.from('devis').update({ statut: 'refuse' }).eq('id', devis.id)
+    if (!(await repondre('refuser'))) { setAction('idle'); return }
     setAction('done_refuse')
-
-    fetch('/api/devis/sync-budget', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ devis_id: devis.id }),
-    }).catch(e => console.error('Erreur synchronisation budget prévisionnel:', e))
   }
 
   if (loading) {
@@ -359,6 +346,10 @@ export default function SignaturePage({ params }: { params: Promise<{ token: str
                 Accepter
               </button>
             </div>
+
+            {actionError && (
+              <p role="alert" className="text-red-400 text-[12px] text-center mt-3">{actionError}</p>
+            )}
 
             <p className="text-gray-700 text-[11px] text-center mt-3">
               En acceptant, vous approuvez ce devis de {fcfa(ttc)} et autorisez le démarrage des travaux.

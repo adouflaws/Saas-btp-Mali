@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { cacheGet, cacheSet, queueAdd, queueGet, queueClear, queueCount } from '@/lib/offline'
+import { cacheGet, cacheSet, queueAdd, queueCount, syncQueue as syncQueueShared } from '@/lib/offline'
 import { useActionGuard } from '@/hooks/useActionGuard'
 
 const supabase = createClient()
@@ -66,9 +66,11 @@ export default function PointagePage() {
     setIsOnline(navigator.onLine)
     const onOnline = () => { setIsOnline(true); syncQueue() }
     const onOffline = () => setIsOnline(false)
+    const onQueue = () => setPendingCount(queueCount())
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)
-    return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline) }
+    window.addEventListener('btp-queue-change', onQueue)
+    return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); window.removeEventListener('btp-queue-change', onQueue) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -191,19 +193,12 @@ export default function PointagePage() {
     setLignes(prev => prev.map(l => ({ ...l, statut: 'absent' as StatutPresence, present: false, montant_jour: 0 })))
   }
 
+  // Synchronisation partagée avec le layout (une seule passe à la fois, voir lib/offline)
   async function syncQueue() {
-    const count = queueCount()
-    if (count === 0) return
+    if (queueCount() === 0) return
     setSyncing(true)
-    const q = queueGet()
-    let failed = false
-    for (const item of q) {
-      try {
-        const { error: err } = await supabase.from('pointages').upsert(item.data, { onConflict: 'chantier_id,ouvrier_id,date_pointage' })
-        if (err) { failed = true; break }
-      } catch { failed = true; break }
-    }
-    if (!failed) { queueClear(); setPendingCount(0) }
+    await syncQueueShared(supabase)
+    setPendingCount(queueCount())
     setSyncing(false)
   }
 

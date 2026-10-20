@@ -6,7 +6,7 @@ import NetworkStatus from '@/components/NetworkStatus'
 import SubscriptionBanner from '@/components/SubscriptionBanner'
 import UpgradeModal from '@/components/UpgradeModal'
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext'
-import { queueGet, queueClear } from '@/lib/offline'
+import { queueCount, syncQueue } from '@/lib/offline'
 import { createClient } from '@/lib/supabase/client'
 import OnboardingModal from '@/components/OnboardingModal'
 
@@ -18,43 +18,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     const supabase = createClient()
 
-    async function syncQueue() {
-      const queue = queueGet()
-      if (queue.length === 0) return
-
+    async function runSync() {
+      if (queueCount() === 0 || !navigator.onLine) return
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      let ok = 0
-      let errors = 0
-
-      for (const action of queue) {
-        try {
-          if (action.op === 'insert') {
-            const { error } = await supabase.from(action.table).insert(action.data)
-            if (error) errors++; else ok++
-          } else if (action.op === 'update' && action.rowId) {
-            const { error } = await supabase.from(action.table).update(action.data).eq('id', action.rowId)
-            if (error) errors++; else ok++
-          }
-        } catch {
-          errors++
-        }
-      }
-
-      queueClear()
+      const { ok, errors } = await syncQueue(supabase)
+      if (ok === 0 && errors === 0) return
 
       const msg = errors === 0
         ? `${ok} action${ok > 1 ? 's' : ''} synchronisée${ok > 1 ? 's' : ''}`
-        : `${ok} synchronisée${ok > 1 ? 's' : ''}, ${errors} échouée${errors > 1 ? 's' : ''}`
+        : `${ok} synchronisée${ok > 1 ? 's' : ''}, ${errors} en attente (nouvel essai au prochain retour du réseau)`
 
       setSyncToast(msg)
       setTimeout(() => setSyncToast(''), 4000)
     }
 
-    const handleOnline = () => syncQueue()
-    window.addEventListener('online', handleOnline)
-    return () => window.removeEventListener('online', handleOnline)
+    // Au chargement aussi : l'appli a pu être fermée hors ligne avec des actions en file
+    runSync()
+    window.addEventListener('online', runSync)
+    return () => window.removeEventListener('online', runSync)
   }, [])
 
   return (
