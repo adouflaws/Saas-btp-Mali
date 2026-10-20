@@ -196,7 +196,7 @@ function ActiviteRecente() {
           href: s.chantier_id ? `/dashboard/chantiers/${s.chantier_id}` : '/dashboard/budget',
           _time: s.created_at,
         })),
-        ...Array.from(parChantier.entries()).map(([chantierId, v]) => ({
+        ...Array.from(parChantier.values()).map(v => ({
           iconType: 'pointage' as const,
           label: `Pointage : ${v.count} ouvrier${v.count > 1 ? 's' : ''} sur ${v.nom}`,
           href: '/dashboard/equipes/pointage',

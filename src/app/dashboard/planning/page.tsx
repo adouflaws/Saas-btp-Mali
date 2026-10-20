@@ -79,7 +79,7 @@ export default function PlanningPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<FormData>(DEFAULT_FORM)
   const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState(false ? '' : '')
+  const [formError, setFormError] = useState('')
 
   const [deleteTarget, setDeleteTarget] = useState<Tache | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -145,7 +145,7 @@ export default function PlanningPage() {
   function openNew() {
     setEditId(null)
     setForm({ ...DEFAULT_FORM, chantier_id: chantiers[0]?.id ?? '' })
-    setPageError('')
+    setFormError('')
     setShowModal(true)
   }
 
@@ -161,7 +161,7 @@ export default function PlanningPage() {
       date_fin_prevue: t.date_fin_prevue ?? '',
       avancement: t.avancement != null ? String(t.avancement) : '0',
     })
-    setPageError('')
+    setFormError('')
     setShowModal(true)
   }
 
@@ -170,7 +170,7 @@ export default function PlanningPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
-    setPageError('')
+    setFormError('')
 
     const payload = {
       nom: form.nom.trim(),
@@ -192,7 +192,8 @@ export default function PlanningPage() {
       err = r.error
     }
 
-    if (err) { setPageError(err.message); setSaving(false); return }
+    // Affiché dans la fenêtre : un message de page resterait caché derrière elle
+    if (err) { setFormError("La tâche n'a pas été enregistrée : " + err.message); setSaving(false); return }
     setShowModal(false)
     setSaving(false)
     await fetchAll(chantierIdsRef.current)
@@ -589,6 +590,10 @@ export default function PlanningPage() {
                   rows={2} placeholder="Détails supplémentaires…"
                   className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all resize-none" />
               </div>
+
+              {formError && (
+                <p role="alert" className="bg-red-500/[0.08] border border-red-500/20 text-red-400 rounded-xl px-4 py-3 text-[13px]">{formError}</p>
+              )}
 
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}

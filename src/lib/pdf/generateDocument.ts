@@ -55,7 +55,6 @@ export async function generateDocument(opts: PdfOptions): Promise<void> {
 
   const st = (c: RGB) => doc.setTextColor(c[0], c[1], c[2])
   const sd = (c: RGB) => doc.setDrawColor(c[0], c[1], c[2])
-  const sf = (c: RGB) => doc.setFillColor(c[0], c[1], c[2])
   const fmtD = (d?: string | null) =>
     d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR') : ''
   const fmtN = (n: number) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')

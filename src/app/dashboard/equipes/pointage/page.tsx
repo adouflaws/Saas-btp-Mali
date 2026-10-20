@@ -159,7 +159,7 @@ export default function PointagePage() {
       }
     })
     setLignes(lines); setLoading(false)
-  }, [chantierId, date])
+  }, [chantierId, date, entrepriseId])
 
   useEffect(() => { loadLignes() }, [loadLignes])
 

@@ -58,6 +58,7 @@ export default function ParametresPage() {
       let userId: string | null = null
       try {
         const { data: { user }, error: authError } = await supabase.auth.getUser()
+        if (authError) setPageError('Session expirée : reconnectez-vous.')
         if (!user) { setLoading(false); return }
         userId = user.id
       } catch (e) {
@@ -71,7 +72,7 @@ export default function ParametresPage() {
         const { data: profile, error: profError } = await supabase
           .from('profiles').select('entreprise_id').eq('id', userId).single()
         if (!profile?.entreprise_id) {
-          setPageError('Aucune entreprise associée à ce compte.')
+          setPageError(profError ? 'Impossible de charger le profil : ' + profError.message : 'Aucune entreprise associée à ce compte.')
           setLoading(false); return
         }
         eid = profile.entreprise_id

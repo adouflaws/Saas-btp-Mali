@@ -66,7 +66,6 @@ function Spinner() {
 export default function CarburantPage() {
   const { guard, isReadOnly } = useActionGuard()
   const [entrepriseId, setEntrepriseId] = useState<string | null>(null)
-  const [userId, setUserId]             = useState<string | null>(null)
   const [vehicules, setVehicules]       = useState<Vehicule[]>([])
   const [pleins, setPleins]             = useState<Plein[]>([])
   const [chantiers, setChantiers]       = useState<Chantier[]>([])
@@ -118,7 +117,6 @@ export default function CarburantPage() {
       setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
-      setUserId(user.id)
       const { data: profile } = await supabase
         .from('profiles').select('entreprise_id').eq('id', user.id).single()
       if (!profile?.entreprise_id) {
@@ -238,7 +236,6 @@ export default function CarburantPage() {
     await fetchAll(profile.entreprise_id)
     // Mettre à jour aussi entrepriseId si nécessaire
     setEntrepriseId(profile.entreprise_id)
-    setUserId(user.id)
   }
 
   async function saveVehicule(e: React.FormEvent) {
@@ -283,7 +280,7 @@ export default function CarburantPage() {
         </div>
         <button
           onClick={() => guard(() => { setPleinForm({ ...DEFAULT_PLEIN, date_plein: new Date().toISOString().split('T')[0] }); setPleinErr(''); setShowPlein(true) })}
-          className="flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors min-h-[44px] w-full sm:w-auto"
+          className={`flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-[13px] font-semibold px-4 py-2.5 rounded-xl transition-colors min-h-[44px] w-full sm:w-auto ${isReadOnly ? 'opacity-60' : ''}`}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <path d="M12 5v14M5 12h14" strokeLinecap="round"/>

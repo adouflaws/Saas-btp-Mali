@@ -51,7 +51,6 @@ type Facture = {
 type Entreprise = { nom: string; adresse?: string | null; telephone: string | null; email: string | null; rccm?: string | null; nif?: string | null }
 type PaletteKey = 'gray' | 'amber' | 'red' | 'darkred'
 type LevelKey = 'j7' | 'j15' | 'j30'
-type LevelState = { state: 'active' | 'sent' | 'disabled'; sentDate: string | null }
 
 /* ─────────────────────────── Constantes ────────────────────── */
 
@@ -63,8 +62,6 @@ const PALETTES: Record<PaletteKey, { row: string; badge: string; text: string }>
 }
 
 const LEVEL_LABELS: Record<LevelKey, string> = { j7: 'J+7', j15: 'J+15', j30: 'J+30' }
-const LEVEL_MIN: Record<LevelKey, number>    = { j7: 7,  j15: 15, j30: 30 }
-const LEVEL_MAX: Record<LevelKey, number>    = { j7: 15, j15: 30, j30: Infinity }
 
 /* ─────────────────────────── Helpers purs ──────────────────── */
 
@@ -85,7 +82,6 @@ function getPaletteKey(j: number): PaletteKey {
 function fcfa(v: number | null) { return (v ?? 0).toLocaleString('fr-FR') + ' FCFA' }
 
 function getChantierInfo(f: Facture): ChantierInfo | null { return f.chantiers ?? f.devis?.chantiers ?? null }
-function getChantierID(f: Facture): string | null         { return f.chantier_id ?? f.devis?.chantier_id ?? null }
 
 function getEffectiveNom(f: Facture): string {
   return f.client_nom || getChantierInfo(f)?.client_nom || f.numero
@@ -95,30 +91,6 @@ function getEffectiveTel(f: Facture): string | null {
 }
 function getEffectiveEmail(f: Facture): string | null {
   return f.client_email ?? getChantierInfo(f)?.client_email ?? null
-}
-
-/* Retourne l'état d'un bouton de niveau donné */
-function getLevelState(niveau: LevelKey, jours: number, relances: Relance[]): LevelState {
-  const min = LEVEL_MIN[niveau]
-  const max = LEVEL_MAX[niveau]
-  const sent = relances
-    .filter(r => r.niveau === niveau)
-    .sort((a, b) => new Date(b.envoye_le).getTime() - new Date(a.envoye_le).getTime())[0]
-
-  if (jours >= max) return { state: 'sent', sentDate: sent ? new Date(sent.envoye_le).toLocaleDateString('fr-FR') : null }
-  if (jours >= min) {
-    if (sent)       return { state: 'sent',   sentDate: new Date(sent.envoye_le).toLocaleDateString('fr-FR') }
-    return              { state: 'active',  sentDate: null }
-  }
-  return { state: 'disabled', sentDate: null }
-}
-
-/* Dernier J+7 envoyé (pour le message J+15) */
-function dateJ7Sent(relances: Relance[]): string {
-  const r = relances
-    .filter(x => x.niveau === 'j7')
-    .sort((a, b) => new Date(a.envoye_le).getTime() - new Date(b.envoye_le).getTime())[0]
-  return r ? new Date(r.envoye_le).toLocaleDateString('fr-FR') : ''
 }
 
 /* ─────────────────────────── Messages WhatsApp / Email ──────── */
@@ -272,7 +244,6 @@ export default function CreancesPage() {
   const [payant, setPayant]             = useState(false)
 
   const [expanded, setExpanded]         = useState<Set<string>>(new Set())
-  const [previewId, setPreviewId]       = useState<string | null>(null)
 
   // Toast
   const [toast, setToast]               = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
@@ -438,7 +409,12 @@ export default function CreancesPage() {
   }
 
   function toggleExpand(id: string) {
-    setExpanded(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
+    setExpanded(p => {
+      const n = new Set(p)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
   }
 
   const totalCreances = factures.reduce((a, f) => a + Math.max(0, (f.montant_ttc ?? 0) - (f.montant_paye ?? 0)), 0)

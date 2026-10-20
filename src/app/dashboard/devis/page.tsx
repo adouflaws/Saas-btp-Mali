@@ -399,6 +399,8 @@ function DevisPageInner() {
           client_nom: form.client_nom.trim(),
           client_telephone: form.client_telephone.trim(),
           numero,
+          date_emission: today,
+          cree_par: userId,
         }).select('id').single()
 
         if (error?.code === '23505') {
@@ -435,9 +437,9 @@ function DevisPageInner() {
 
   /* ─── Bibliothèque de prix ───────────────────────────── */
 
+  // Ouvre la bibliothèque pour la ligne idx (garde l'onglet consulté en dernier)
   function openBibliotheque(idx: number) {
     setBiblioLineIdx(idx)
-    setBiblioTab('ouvriers')
     setShowBibliotheque(true)
   }
 
@@ -467,15 +469,13 @@ function DevisPageInner() {
       }))
 
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('modeles_devis')
       .insert({ entreprise_id: eid, nom: nomModele.trim(), lignes: lignesJson })
-      .select()
-
-    if (error) console.error('Erreur complète:', JSON.stringify(error, null, 2))
 
     setSavingModele(false)
     setShowSaveModele(false)
+    if (error) { setPageError("Le modèle n'a pas été enregistré : " + error.message); return }
     setNomModele('')
   }
 
@@ -487,6 +487,7 @@ function DevisPageInner() {
       .select('id, nom, created_at, lignes')
       .eq('entreprise_id', eid)
       .order('created_at', { ascending: false })
+    if (error) { setPageError('Impossible de charger les modèles : ' + error.message); return }
     setModeles((data ?? []) as ModeleDevis[])
     setShowLoadModele(true)
   }
@@ -591,7 +592,7 @@ function DevisPageInner() {
     const ttc = ht + tva
 
     // Crée la facture
-    const { data: facture, error: factureError } = await supabase
+    const { error: factureError } = await supabase
       .from('factures')
       .insert({
         numero,
@@ -984,7 +985,7 @@ function DevisPageInner() {
                               className="w-full bg-[#1C1C1C] border border-white/[0.08] text-white placeholder-gray-600 rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:border-orange-500 transition-all" />
                             <button
                               type="button"
-                              onClick={() => { setBiblioLineIdx(i); setShowBibliotheque(true) }}
+                              onClick={() => openBibliotheque(i)}
                               className="text-xs text-orange-400 hover:text-orange-300 whitespace-nowrap flex items-center gap-1 mt-1">
                               📚 Bibliothèque
                             </button>

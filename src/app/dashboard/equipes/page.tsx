@@ -132,6 +132,7 @@ function FicheDrawer({ ouvrier, hist, loadingHist, onClose, onEdit, onToggle, co
           <div className="px-5 pt-5 pb-5 border-b border-white/[0.06]">
             <div className="flex items-start gap-4 mb-4">
               {ouvrier.photo_url
+                // eslint-disable-next-line @next/next/no-img-element -- photo envoyée par l'utilisateur (Storage), même convention que les photos de chantier
                 ? <img src={ouvrier.photo_url} alt="" className="w-[60px] h-[60px] rounded-2xl object-cover shrink-0" />
                 : <div className={`w-[60px] h-[60px] rounded-2xl flex items-center justify-center text-xl font-bold shrink-0 ${colorCls}`}>{initials(ouvrier.nom, ouvrier.prenom)}</div>}
               <div className="min-w-0 flex-1">
@@ -513,6 +514,7 @@ export default function EquipesPage() {
                   className="px-5 py-4 flex items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors group cursor-pointer">
                   <div className="flex items-center gap-3 min-w-0">
                     {o.photo_url
+                      // eslint-disable-next-line @next/next/no-img-element -- photo envoyée par l'utilisateur (Storage), même convention que les photos de chantier
                       ? <img src={o.photo_url} alt="" className="w-9 h-9 rounded-xl object-cover shrink-0" />
                       : <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-[12px] font-bold ${avatarColor}`}>{initials(o.nom, o.prenom)}</div>}
                     <div className="min-w-0">
