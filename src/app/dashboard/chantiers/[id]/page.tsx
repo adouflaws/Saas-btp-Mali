@@ -28,7 +28,7 @@ type Chantier = {
 
 type Tache = { id: string; nom: string; statut: string | null; avancement: number | null }
 type Jalon = { id: string; nom: string; date_prevue: string; atteint: boolean | null }
-type Photo = { id: string; url: string; nom: string | null; legende: string | null; prise_le: string }
+type Photo = { id: string; url: string; legende: string | null; prise_le: string }
 
 type RentaData = {
   totalFacture: number
@@ -127,7 +127,7 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
       supabase.from('chantiers').select('id, nom, client_nom, client_telephone, ville, statut, avancement, date_debut, date_fin_prevue, portail_actif, budget_prevu').eq('id', chantierId).single(),
       supabase.from('taches').select('id, nom, statut, avancement').eq('chantier_id', chantierId).order('ordre'),
       supabase.from('jalons').select('id, nom, date_prevue, atteint').eq('chantier_id', chantierId).order('date_prevue'),
-      supabase.from('photos_chantier').select('id, url, nom, legende, prise_le').eq('chantier_id', chantierId).order('prise_le', { ascending: false }),
+      supabase.from('photos_chantier').select('id, url, legende, prise_le').eq('chantier_id', chantierId).order('prise_le', { ascending: false }),
     ])
     if (ce) { setPageError(ce.message); return }
     if (c) setChantier(c as Chantier)
@@ -698,7 +698,7 @@ export default function ChantierDetailPage({ params }: { params: Promise<{ id: s
                 {photos.map(photo => (
                   <div key={photo.id} className="group relative aspect-square bg-white/[0.04] rounded-xl overflow-hidden border border-white/[0.06]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={photo.url} alt={photo.nom ?? ''} className="w-full h-full object-cover" />
+                    <img src={photo.url} alt={photo.legende ?? ''} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
                       <button onClick={() => guard(() => handleDeletePhoto(photo))} disabled={deleting === photo.id}
                         className="self-end w-6 h-6 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors">

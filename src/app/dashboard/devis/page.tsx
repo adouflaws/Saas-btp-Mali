@@ -86,7 +86,7 @@ type OuvrierBiblio = {
 type TarifPerso = {
   id: string
   designation: string
-  prix: number
+  prix_unitaire: number
   unite: string | null
 }
 
@@ -1164,13 +1164,13 @@ function DevisPageInner() {
                     </div>
                   ) : tarifsPerso.map(t => (
                     <button key={t.id} type="button"
-                      onClick={() => selectFromBibliotheque(t.designation, t.unite ?? '', t.prix, 'divers')}
+                      onClick={() => selectFromBibliotheque(t.designation, t.unite ?? '', t.prix_unitaire, 'divers')}
                       className="w-full flex items-center justify-between px-6 py-3 hover:bg-white/[0.04] transition-colors text-left">
                       <div>
                         <span className="text-white text-[13px]">{t.designation}</span>
                         {t.unite && <span className="text-gray-600 text-[11px] ml-2">/ {t.unite}</span>}
                       </div>
-                      <span className="text-orange-400 text-[13px] font-medium shrink-0">{(t.prix ?? 0).toLocaleString('fr-FR')} FCFA</span>
+                      <span className="text-orange-400 text-[13px] font-medium shrink-0">{(t.prix_unitaire ?? 0).toLocaleString('fr-FR')} FCFA</span>
                     </button>
                   ))}
                 </div>

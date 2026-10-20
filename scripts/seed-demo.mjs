@@ -422,8 +422,12 @@ async function main() {
   await insert('depenses', depenses.map(d => ({ ...d, entreprise_id: eid, saisi_par: user.id })))
   console.log(`✓ ${depenses.length} dépenses`)
 
-  /* 10. Bibliothèque de prix : volontairement absente tant que la colonne prix/prix_unitaire
-        de tarifs_personnalises n'est pas alignée avec le code (sinon « 0 FCFA » à l'écran). */
+  /* 10. Bibliothèque de prix */
+  await insert('tarifs_personnalises', [
+    ['Béton dosé à 350 kg/m³', 95_000, 'm³'], ['Maçonnerie agglos 15', 9_500, 'm²'], ['Enduit ciment intérieur', 3_500, 'm²'],
+    ['Carrelage grès 40×40 posé', 14_500, 'm²'], ['Peinture vinylique 2 couches', 2_800, 'm²'], ['Fer à béton façonné posé', 950_000, 't'],
+    ['Point lumineux', 22_000, 'u'], ['Prise de courant', 18_000, 'u'],
+  ].map(([designation, prix_unitaire, unite]) => ({ entreprise_id: eid, designation, prix_unitaire, unite })))
 
   /* 11. Devis + lignes */
   const DEVIS = [

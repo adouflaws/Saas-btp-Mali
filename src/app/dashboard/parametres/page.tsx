@@ -20,7 +20,7 @@ type EntrepriseData = {
 type TarifPerso = {
   id: string
   designation: string
-  prix: number
+  prix_unitaire: number
   unite: string | null
 }
 
@@ -195,7 +195,7 @@ export default function ParametresPage() {
     const { error } = await supabase.from('tarifs_personnalises').insert({
       entreprise_id: entrepriseId,
       designation: tarifForm.designation.trim(),
-      prix: Number(tarifForm.prix) || 0,
+      prix_unitaire: Number(tarifForm.prix) || 0,
       unite: tarifForm.unite.trim() || null,
     })
     if (!error) {
@@ -456,7 +456,7 @@ export default function ParametresPage() {
               {tarifs.map(t => (
                 <div key={t.id} className="grid px-6 py-3 items-center hover:bg-white/[0.02] transition-colors group" style={{ gridTemplateColumns: '3fr 1fr 1fr 40px' }}>
                   <span className="text-white text-[13px]">{t.designation}</span>
-                  <span className="text-orange-400 text-[13px] font-medium">{(t.prix ?? 0).toLocaleString('fr-FR')}</span>
+                  <span className="text-orange-400 text-[13px] font-medium">{(t.prix_unitaire ?? 0).toLocaleString('fr-FR')}</span>
                   <span className="text-gray-500 text-[12px]">{t.unite ?? '—'}</span>
                   <button
                     onClick={() => guard(() => handleDeleteTarif(t.id))}
