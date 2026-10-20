@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
@@ -105,16 +105,29 @@ const AreaTooltip = ({ active, payload, label }: { active?: boolean; payload?: {
   )
 }
 
+// ─── Spinner ─────────────────────────────────────────────────────────────────
+
+const Spinner = () => (
+  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+  </svg>
+)
+
+// Graphiques Recharts rendus côté client uniquement : false au rendu serveur,
+// true dans le navigateur, sans setState dans un effet.
+const noopSubscribe = () => () => {}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function BudgetPage() {
-  const { guard, isReadOnly } = useActionGuard()
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  const { guard } = useActionGuard()
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false)
 
   const [chantiers, setChantiers] = useState<Chantier[]>([])
   const [chantierId, setChantierId] = useState('')
-  const [chantier, setChantier] = useState<Chantier | null>(null)
+  // Déduit de la sélection : pas d'état séparé à resynchroniser
+  const chantier = useMemo(() => chantiers.find(x => x.id === chantierId) ?? null, [chantiers, chantierId])
   const [entrepriseId, setEntrepriseId] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [depenses, setDepenses] = useState<Depense[]>([])
@@ -195,7 +208,6 @@ export default function BudgetPage() {
       const tasks: Promise<unknown>[] = [fetchStocks(profile.entreprise_id)]
       if (list.length > 0) {
         setChantierId(list[0].id)
-        setChantier(list[0])
         tasks.push(fetchDepenses(list[0].id))
       }
       await Promise.all(tasks)
@@ -204,12 +216,12 @@ export default function BudgetPage() {
     init()
   }, [fetchDepenses, fetchStocks])
 
-  useEffect(() => {
-    if (!chantierId) return
-    const c = chantiers.find(x => x.id === chantierId) ?? null
-    setChantier(c)
-    fetchDepenses(chantierId)
-  }, [chantierId, chantiers, fetchDepenses])
+  // Changement de chantier : rechargement déclenché par l'action, pas par un effet
+  // (l'effet doublait aussi la requête du chargement initial)
+  function selectChantier(cid: string) {
+    setChantierId(cid)
+    if (cid) fetchDepenses(cid)
+  }
 
   // ── Dépenses CRUD ────────────────────────────────────────────────────────
 
@@ -438,14 +450,6 @@ export default function BudgetPage() {
   const valeurStock = stocks.reduce((a, s) => a + (s.quantite_stock ?? 0) * (s.prix_unitaire ?? 0), 0)
   const enRupture = stocks.filter(s => (s.quantite_stock ?? 0) <= (s.quantite_min ?? 0)).length
 
-  // ─── Spinner helper ──────────────────────────────────────────────────────
-  const Spinner = () => (
-    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-    </svg>
-  )
-
   // ─── Render ──────────────────────────────────────────────────────────────
 
   if (loading) return <PageSkeleton />
@@ -493,7 +497,7 @@ export default function BudgetPage() {
           ) : chantiers.length === 0 ? (
             <p className="text-amber-400 text-[13px]">Aucun chantier. <Link href="/dashboard/chantiers" className="underline">En créer un →</Link></p>
           ) : (
-            <select value={chantierId} onChange={e => setChantierId(e.target.value)}
+            <select value={chantierId} onChange={e => selectChantier(e.target.value)}
               className="w-full sm:min-w-[280px] bg-[#1C1C1C] border border-white/[0.08] text-white rounded-xl px-4 py-2 text-[13px] font-medium focus:outline-none focus:border-orange-500 transition-all">
               {chantiers.map(c => <option key={c.id} value={c.id}>{c.nom}{c.ville ? ` — ${c.ville}` : ''}</option>)}
             </select>
