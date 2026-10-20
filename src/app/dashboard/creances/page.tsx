@@ -453,7 +453,7 @@ export default function CreancesPage() {
         </div>
       )}
 
-      <PageTooltip pageKey="creances" message="Vos factures impayées apparaissent ici. Les relances WhatsApp partent automatiquement à J+7, J+15 et J+30." />
+      <PageTooltip pageKey="creances" message="Vos factures impayées apparaissent ici. Un bouton de relance WhatsApp vous est proposé à J+7, J+15 et J+30, avec le message déjà rédigé." />
 
       <div className="mb-6">
         <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">Créances & Relances</h1>
@@ -572,7 +572,7 @@ export default function CreancesPage() {
                       <button
                         onClick={() => handleRelance(f, activeLevel)}
                         disabled={isLoading}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+                        className="flex items-center gap-1 px-2 py-1 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg text-xs font-medium bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
                       >
                         {isLoading
                           ? <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
@@ -585,7 +585,7 @@ export default function CreancesPage() {
                     {activeLevel && (
                       <button
                         onClick={() => handleEmailRelance(f, activeLevel)}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
+                        className={`flex items-center gap-1 px-2 py-1 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg text-xs font-medium border transition-all ${
                           email
                             ? 'bg-blue-500/10 border-blue-500/25 text-blue-400 hover:bg-blue-500/20'
                             : 'bg-white/[0.03] border-white/[0.06] text-gray-500 hover:text-gray-300'
@@ -600,7 +600,7 @@ export default function CreancesPage() {
                     {activeLevel && (
                       <button
                         onClick={() => copyMessage(f, activeLevel)}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-white/[0.04] border border-white/[0.08] text-gray-400 hover:text-gray-200 hover:bg-white/[0.07] transition-all"
+                        className="flex items-center gap-1 px-2 py-1 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg text-xs font-medium bg-white/[0.04] border border-white/[0.08] text-gray-400 hover:text-gray-200 hover:bg-white/[0.07] transition-all"
                       >
                         <span>📋</span>
                         <span>Copier</span>
@@ -612,7 +612,7 @@ export default function CreancesPage() {
                       <div className="relative">
                         <button
                           onClick={() => setReponseDropdown(reponseDropdown === f.id ? null : f.id)}
-                          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
+                          className={`flex items-center gap-1 px-2 py-1 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg text-xs font-medium border transition-all ${
                             latestReponse
                               ? 'bg-orange-500/15 border-orange-500/30 text-orange-300'
                               : 'bg-white/[0.04] border-white/[0.08] text-gray-400 hover:text-gray-200'
@@ -655,7 +655,7 @@ export default function CreancesPage() {
                     {/* Marquer payée */}
                     <button
                       onClick={() => setPaiementTarget(f)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all ml-auto"
+                      className="flex items-center gap-1 px-2 py-1 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all ml-auto"
                     >
                       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3">
                         <path d="M2 8l5 5L14 3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -677,7 +677,7 @@ export default function CreancesPage() {
                     <div className="mt-1.5">
                       <button
                         onClick={() => toggleExpand(f.id)}
-                        className="flex items-center gap-1 text-[10px] text-gray-700 hover:text-gray-500 transition-colors"
+                        className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300 pointer-coarse:min-h-11 transition-colors"
                       >
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className={`w-2.5 h-2.5 transition-transform ${expanded.has(f.id) ? 'rotate-180' : ''}`}>
                           <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round"/>
@@ -756,7 +756,7 @@ export default function CreancesPage() {
             <div className="sm:hidden flex justify-center -mt-3 mb-3"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-white text-[15px] font-semibold">Téléphone du client</h3>
-              <button onClick={() => setTelTarget(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setTelTarget(null)} className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M3 3l10 10M13 3L3 13" strokeLinecap="round"/></svg>
               </button>
             </div>

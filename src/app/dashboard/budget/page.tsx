@@ -656,7 +656,7 @@ export default function BudgetPage() {
                       <span className="text-gray-600 text-[11px] italic whitespace-nowrap">Généré depuis {sourceLabel}</span>
                     ) : (
                       <button onClick={() => guard(() => setDeleteDepId(d.id))}
-                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-colors">
+                        className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-colors">
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
                           <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8L13 4" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
@@ -748,19 +748,19 @@ export default function BudgetPage() {
                     <p className="text-gray-300 text-[12px] font-medium">{valeur > 0 ? fmt(valeur) : '—'}</p>
                     <div className="flex justify-end gap-1">
                       <button onClick={() => guard(() => openSortie(s))} title="Sortie vers chantier" disabled={qte <= 0}
-                        className="w-6 h-6 flex items-center justify-center rounded bg-white/[0.04] hover:bg-orange-500/15 text-gray-600 hover:text-orange-400 transition-colors disabled:opacity-30">
+                        className="w-6 h-6 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded bg-white/[0.04] hover:bg-orange-500/15 text-gray-600 hover:text-orange-400 transition-colors disabled:opacity-30">
                         <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3 h-3"><path d="M2 10L10 2M4 2h6v6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </button>
                       <button onClick={() => guard(() => openEntree(s))} title="Entrée de stock"
-                        className="w-6 h-6 flex items-center justify-center rounded bg-white/[0.04] hover:bg-emerald-500/15 text-gray-600 hover:text-emerald-400 transition-colors">
+                        className="w-6 h-6 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded bg-white/[0.04] hover:bg-emerald-500/15 text-gray-600 hover:text-emerald-400 transition-colors">
                         <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3 h-3"><path d="M10 2L2 10M2 4v6h6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </button>
                       <button onClick={() => openHistorique(s)} title="Historique des mouvements"
-                        className="w-6 h-6 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/[0.08] text-gray-600 hover:text-white transition-colors">
+                        className="w-6 h-6 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/[0.08] text-gray-600 hover:text-white transition-colors">
                         <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3 h-3"><circle cx="6" cy="6" r="4.5"/><path d="M6 3.5V6l1.8 1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </button>
                       <button onClick={() => openEditStock(s)} title="Modifier"
-                        className="w-6 h-6 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/[0.08] text-gray-600 hover:text-white transition-colors">
+                        className="w-6 h-6 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded bg-white/[0.04] hover:bg-white/[0.08] text-gray-600 hover:text-white transition-colors">
                         <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" className="w-3 h-3"><path d="M8.5 1.5l2 2-7 7H1.5v-2l7-7z" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </button>
                     </div>
@@ -783,7 +783,7 @@ export default function BudgetPage() {
             <div className="sm:hidden flex justify-center pt-3 pb-1"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06]">
               <h2 className="text-[15px] font-semibold text-white">Nouvelle dépense</h2>
-              <button onClick={() => setShowDepForm(false)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setShowDepForm(false)} className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M2 2l12 12M14 2L2 14" strokeLinecap="round"/></svg>
               </button>
             </div>
@@ -866,7 +866,7 @@ export default function BudgetPage() {
             <div className="sm:hidden flex justify-center pt-3 pb-1"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06]">
               <h2 className="text-[15px] font-semibold text-white">{editStockId ? 'Modifier le matériau' : 'Ajouter un matériau'}</h2>
-              <button onClick={() => setShowStockForm(false)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setShowStockForm(false)} className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M2 2l12 12M14 2L2 14" strokeLinecap="round"/></svg>
               </button>
             </div>
@@ -953,7 +953,7 @@ export default function BudgetPage() {
             <div className="sm:hidden flex justify-center pt-3 pb-1"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06]">
               <h2 className="text-[15px] font-semibold text-white">Sortie de stock</h2>
-              <button onClick={() => setSortieMateriau(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setSortieMateriau(null)} className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M2 2l12 12M14 2L2 14" strokeLinecap="round"/></svg>
               </button>
             </div>
@@ -1013,7 +1013,7 @@ export default function BudgetPage() {
             <div className="sm:hidden flex justify-center pt-3 pb-1"><div className="w-10 h-1 bg-white/20 rounded-full" /></div>
             <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06]">
               <h2 className="text-[15px] font-semibold text-white">Entrée de stock</h2>
-              <button onClick={() => setEntreeMateriau(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setEntreeMateriau(null)} className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M2 2l12 12M14 2L2 14" strokeLinecap="round"/></svg>
               </button>
             </div>
@@ -1071,7 +1071,7 @@ export default function BudgetPage() {
                 <h2 className="text-[15px] font-semibold text-white">Historique des mouvements</h2>
                 <p className="text-gray-600 text-[12px] mt-0.5">{historiqueMateriau.nom}</p>
               </div>
-              <button onClick={() => setHistoriqueMateriau(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setHistoriqueMateriau(null)} className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M2 2l12 12M14 2L2 14" strokeLinecap="round"/></svg>
               </button>
             </div>

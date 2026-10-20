@@ -259,12 +259,12 @@ export default async function PortailPage({ params }: { params: Promise<{ chanti
           <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-[12px]">
             {c.date_debut && (
               <span className="text-[#6B7280]">
-                Debut <span className="font-semibold text-[#1C1C1C]">{fmtDate(c.date_debut)}</span>
+                Début <span className="font-semibold text-[#1C1C1C]">{fmtDate(c.date_debut)}</span>
               </span>
             )}
             {c.date_fin_prevue && (
               <span className="text-[#6B7280]">
-                Fin prevue <span className="font-semibold text-[#1C1C1C]">{fmtDate(c.date_fin_prevue)}</span>
+                Fin prévue <span className="font-semibold text-[#1C1C1C]">{fmtDate(c.date_fin_prevue)}</span>
               </span>
             )}
             {joursRestants !== null && (
@@ -365,7 +365,7 @@ export default async function PortailPage({ params }: { params: Promise<{ chanti
 
                   const dateLabel = done && j.date_reelle
                     ? new Date(j.date_reelle).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
-                    : `Prevu ${new Date(j.date_prevue).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`
+                    : `Prévu ${new Date(j.date_prevue).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`
 
                   return (
                     <div key={j.id} className="flex items-start gap-4">
@@ -393,7 +393,7 @@ export default async function PortailPage({ params }: { params: Promise<{ chanti
                             enCours ? 'bg-orange-50 text-orange-400' :
                                       'bg-gray-50 text-gray-400'
                           }`}>
-                            {done ? 'Termine' : enCours ? 'En cours' : 'A venir'}
+                            {done ? 'Terminé' : enCours ? 'En cours' : 'À venir'}
                           </span>
                         </div>
                         <p className="text-[#6B7280] text-[11px] mt-0.5">{dateLabel}</p>
@@ -445,7 +445,7 @@ export default async function PortailPage({ params }: { params: Promise<{ chanti
         {/* ── FOOTER ── */}
         <footer className="py-4 text-center">
           <p className="text-gray-300 text-[11px]">
-            Suivi de chantier propulse par{' '}
+            Suivi de chantier propulsé par{' '}
             <a
               href="https://saas-btp-mali.vercel.app"
               target="_blank"

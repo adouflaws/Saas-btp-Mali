@@ -433,13 +433,13 @@ function FacturesPageInner() {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {f.statut !== 'paye' && (
                         <button onClick={() => setPaiementTarget(f)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-medium transition-colors">
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-medium transition-colors">
                           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3"><path d="M2 8l5 5L14 3" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           Paiement
                         </button>
                       )}
                       <button onClick={() => setEditTarget(f)}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-[11px] font-medium transition-colors">
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-[11px] font-medium transition-colors">
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3">
                           <path d="M11.333 2a1.886 1.886 0 112.667 2.667L5.167 13.5 2 14l.5-3.167L11.333 2z" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
@@ -447,16 +447,16 @@ function FacturesPageInner() {
                       </button>
                       {f.devis_id && (
                         <Link href="/dashboard/devis"
-                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors" title="Voir le devis">
+                          className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors" title="Voir le devis">
                           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M14 2H6a1.5 1.5 0 00-1.5 1.5v10A1.5 1.5 0 006 15h8a1.5 1.5 0 001.5-1.5v-10A1.5 1.5 0 0014 2z"/><path d="M14 2v4h-4M8 9h4M8 12h2" strokeLinecap="round"/></svg>
                         </Link>
                       )}
                       <button onClick={() => downloadFacturePDF(f)}
-                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors" title="Télécharger PDF">
+                        className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors" title="Télécharger PDF">
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M8 2v8M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </button>
                       <button onClick={() => setDeleteTarget(f)}
-                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors" title="Supprimer">
+                        className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors" title="Supprimer">
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8L13 4" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </button>
                     </div>
@@ -480,7 +480,7 @@ function FacturesPageInner() {
                 <h3 className="text-white text-[15px] font-semibold">Téléphone du client</h3>
                 <p className="text-gray-600 text-[12px] mt-0.5">{telTarget.numero}</p>
               </div>
-              <button onClick={() => setTelTarget(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setTelTarget(null)} className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M3 3l10 10M13 3L3 13" strokeLinecap="round"/></svg>
               </button>
             </div>
@@ -561,7 +561,7 @@ function FacturesPageInner() {
                 <h3 className="text-white text-[15px] font-semibold">Modifier la facture</h3>
                 <p className="text-gray-600 text-[12px] mt-0.5">{editTarget.numero} · {getClientNom(editTarget) ?? '—'}</p>
               </div>
-              <button onClick={() => setEditTarget(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setEditTarget(null)} className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M3 3l10 10M13 3L3 13" strokeLinecap="round"/></svg>
               </button>
             </div>

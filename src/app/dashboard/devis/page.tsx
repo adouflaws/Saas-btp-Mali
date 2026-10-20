@@ -190,6 +190,9 @@ function DevisPageInner() {
   }
 
   const [devisList, setDevisList] = useState<DevisRow[]>([])
+  // Devis ayant déjà au moins une facture : source de vérité pour masquer "Facturer"
+  // (le statut 'converti' est refusé par la contrainte devis_statut_check en base).
+  const [devisFactures, setDevisFactures] = useState<Set<string>>(new Set())
   const [chantiers, setChantiers] = useState<Chantier[]>([])
   const [entrepriseId, setEntrepriseId] = useState<string | null>(null)
   const [entrepriseInfo, setEntrepriseInfo] = useState<EntrepriseInfo>({ nom: 'BTP Mali', adresse: null, telephone: null, email: null, rccm: null, nif: null, logo_url: null })
@@ -244,13 +247,17 @@ function DevisPageInner() {
   const fetchDevis = useCallback(async () => {
     const eid = entrepriseIdRef.current
     if (!eid) return
-    const { data, error } = await supabase
-      .from('devis')
-      .select('*, chantiers(nom, client_nom, ville, client_telephone, client_email)')
-      .eq('entreprise_id', eid)
-      .order('created_at', { ascending: false })
+    const [{ data, error }, { data: facs }] = await Promise.all([
+      supabase
+        .from('devis')
+        .select('*, chantiers(nom, client_nom, ville, client_telephone, client_email)')
+        .eq('entreprise_id', eid)
+        .order('created_at', { ascending: false }),
+      supabase.from('factures').select('devis_id').eq('entreprise_id', eid).not('devis_id', 'is', null),
+    ])
     if (error) setPageError(error.message)
     else setDevisList((data ?? []) as DevisRow[])
+    setDevisFactures(new Set((facs ?? []).map(f => f.devis_id as string)))
   }, [])
 
   useEffect(() => {
@@ -552,6 +559,17 @@ function DevisPageInner() {
     console.log('=== CONVERSION DEVIS → FACTURE ===')
     console.log('Devis ID:', devis_id)
 
+    // Garde-fou anti-doublon : un devis déjà facturé ne repasse jamais par ici
+    const { data: dejaFacture } = await supabase
+      .from('factures').select('id').eq('devis_id', devis_id).limit(1)
+    if (dejaFacture && dejaFacture.length > 0) {
+      setDevisFactures(prev => new Set(prev).add(devis_id))
+      setConvertTarget(null)
+      setConverting(false)
+      router.push('/dashboard/factures')
+      return
+    }
+
     // Récupère le devis complet avec ses lignes
     const { data: devis, error: devisError } = await supabase
       .from('devis')
@@ -635,8 +653,8 @@ function DevisPageInner() {
       console.log('Erreur copie lignes:', lignesError)
     }
 
-    // Met à jour le statut du devis
-    await supabase.from('devis').update({ statut: 'converti' }).eq('id', devis_id)
+    // Le devis reste 'accepte' : la facture liée (devis_id) suffit à le marquer comme facturé.
+    setDevisFactures(prev => new Set(prev).add(devis_id))
 
     console.log('SUCCESS: Facture créée avec succès !')
     setConvertTarget(null)
@@ -760,7 +778,8 @@ function DevisPageInner() {
           <div className="divide-y divide-white/[0.04]">
             {devisFiltres.map(d => {
               const canEdit = ['brouillon'].includes(d.statut ?? '')
-              const canConvert = d.statut === 'accepte'
+              const estFacture = devisFactures.has(d.id)
+              const canConvert = d.statut === 'accepte' && !estFacture
               const canSign = ['brouillon', 'envoye'].includes(d.statut ?? '')
               return (
                 <div key={d.id} className="px-4 sm:px-6 py-4 hover:bg-white/[0.02] transition-colors">
@@ -782,7 +801,7 @@ function DevisPageInner() {
                             )}
                           </div>
                           <p className="text-gray-500 text-[12px] mt-0.5 truncate">
-                            {d.chantiers?.client_nom ?? '—'}{d.chantiers?.nom ? ` · ${d.chantiers.nom}` : ''}
+                            {d.client_nom || d.chantiers?.client_nom || '—'}{d.chantiers?.nom ? ` · ${d.chantiers.nom}` : ''}
                           </p>
                           {d.date_emission && (
                             <p className="text-gray-700 text-[11px] mt-0.5">
@@ -806,7 +825,7 @@ function DevisPageInner() {
                         <button
                           onClick={() => handleEnvoyerSignature(d)}
                           disabled={generatingToken}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-[11px] font-medium transition-colors"
+                          className="flex items-center gap-1 px-2.5 py-1.5 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-[11px] font-medium transition-colors"
                         >
                           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3">
                             <path d="M14 1L1 6l5 3 6-5-5 6 3 5z" strokeLinecap="round" strokeLinejoin="round"/>
@@ -815,7 +834,7 @@ function DevisPageInner() {
                         </button>
                       )}
                       <button onClick={() => { setStatutTarget(d); setNewStatut(d.statut ?? 'brouillon') }}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white text-[11px] font-medium transition-colors">
+                        className="flex items-center gap-1 px-2.5 py-1.5 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white text-[11px] font-medium transition-colors">
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1.5" strokeLinecap="round"/></svg>
                         Statut
                       </button>
@@ -847,25 +866,32 @@ function DevisPageInner() {
                               })),
                           })
                         }}
-                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors" title="Télécharger PDF">
+                        className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors" title="Télécharger PDF">
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M8 2v8M5 7l3 3 3-3M3 12h10" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </button>
                       {canEdit && (
                         <button onClick={() => guard(() => openEdit(d))}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors" title="Modifier">
+                          className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-500 hover:text-white transition-colors" title="Modifier">
                           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5"><path d="M11.5 2.5l2 2-9 9H2.5v-2l9-9z" strokeLinecap="round" strokeLinejoin="round"/></svg>
                         </button>
                       )}
                       {canConvert && (
                         <button onClick={() => setConvertTarget(d)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-medium transition-colors">
+                          className="flex items-center gap-1 px-2.5 py-1.5 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-medium transition-colors">
                           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3 h-3"><path d="M2 8h10M9 5l3 3-3 3" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           Facturer
                         </button>
                       )}
+                      {estFacture && (
+                        <Link href="/dashboard/factures"
+                          className="flex items-center gap-1 px-2.5 py-1.5 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-gray-400 hover:text-white text-[11px] font-medium transition-colors">
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3 h-3"><path d="M3 8.5l3 3 7-7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          Facturé
+                        </Link>
+                      )}
                       {canEdit && (
                         <button onClick={() => guard(() => setDeleteTarget(d))}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors" title="Supprimer">
+                          className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg bg-white/[0.04] hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-colors" title="Supprimer">
                           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8L13 4" strokeLinecap="round" strokeLinejoin="round"/></svg>
                         </button>
                       )}
@@ -893,7 +919,7 @@ function DevisPageInner() {
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 7h6M5 10h4" strokeLinecap="round"/></svg>
                   Utiliser un modèle
                 </button>
-                <button onClick={() => setShowModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+                <button onClick={() => setShowModal(false)} className="w-8 h-8 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M2 2l12 12M14 2L2 14" strokeLinecap="round"/></svg>
                 </button>
               </div>
@@ -1014,7 +1040,7 @@ function DevisPageInner() {
                           </div>
                           <button type="button" onClick={() => setLignes(ls => ls.filter((_, j) => j !== i))}
                             disabled={lignes.length === 1}
-                            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                            className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
                             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5"><path d="M3 8h10" strokeLinecap="round"/></svg>
                           </button>
                         </div>
@@ -1071,7 +1097,7 @@ function DevisPageInner() {
           <div className="relative w-full max-w-2xl bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] shrink-0">
               <h3 className="text-[15px] font-semibold text-white">Bibliothèque de prix</h3>
-              <button onClick={() => setShowBibliotheque(false)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setShowBibliotheque(false)} className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M2 2l12 12M14 2L2 14" strokeLinecap="round"/></svg>
               </button>
             </div>
@@ -1187,7 +1213,7 @@ function DevisPageInner() {
           <div className="relative w-full max-w-xs bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl p-6">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-white text-[15px] font-semibold">Modèles de devis</h3>
-              <button onClick={() => setShowModeleChoice(false)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setShowModeleChoice(false)} className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M2 2l12 12M14 2L2 14" strokeLinecap="round"/></svg>
               </button>
             </div>
@@ -1249,7 +1275,7 @@ function DevisPageInner() {
           <div className="relative w-full max-w-sm bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
               <h3 className="text-white text-[14px] font-semibold">Utiliser un modèle</h3>
-              <button onClick={() => setShowLoadModele(false)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setShowLoadModele(false)} className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><path d="M2 2l12 12M14 2L2 14" strokeLinecap="round"/></svg>
               </button>
             </div>
@@ -1286,7 +1312,7 @@ function DevisPageInner() {
           <div className="relative w-full max-w-md bg-[#232323] rounded-2xl border border-white/[0.08] shadow-2xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white text-[15px] font-semibold">Lien de signature</h3>
-              <button onClick={() => setSignatureTarget(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
+              <button onClick={() => setSignatureTarget(null)} className="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><path d="M2 2l12 12M14 2L2 14" strokeLinecap="round"/></svg>
               </button>
             </div>
